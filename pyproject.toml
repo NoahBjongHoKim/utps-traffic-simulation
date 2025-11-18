@@ -1,0 +1,32 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "traffic_sim_module"
+version = "0.0.1"
+description = "Processing of simulation data results from Swiss AI"
+authors = [
+  { name = "Noah Kim" },
+]
+
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    
+]
+requires-python = "~=3.12.0"
+
+
+[tool.ruff]
+line-length = 99
+src = ["traffic_sim_module"]
+include = ["pyproject.toml", "traffic_sim_module/**/*.py"]
+
+[tool.ruff.lint]
+extend-select = ["I"]  # Add import sorting
+
+[tool.ruff.lint.isort]
+known-first-party = ["traffic_sim_module"]
+force-sort-within-sections = true
+
