@@ -1,0 +1,33 @@
+# Pipeline Configuration for v4 Morning Rush Hour
+# Processing MATSim events for morning rush hour (07:30 - 09:00)
+
+paths:
+  # Input files (update paths to your data location)
+  xml_input: data/raw/v4/events.xml
+  gpkg_network: data/raw/v4/network.gpkg
+
+  # Output files
+  parquet_intermediate: data/interim/v4_morning_rush_filtered.parquet
+  geojson_output: data/processed/v4_morning_rush_trajectories.geojson
+
+filters:
+  # Morning rush hour time window
+  time_interval_1:
+    start: "07:30"
+    end: "09:00"
+
+  # Single time interval (use same for both)
+  time_interval_2:
+    start: "07:30"
+    end: "09:00"
+
+processing:
+  # Number of worker processes (omit to use all available CPUs)
+  # num_workers: 8
+
+  # Chunk size for processing (larger = more memory, faster processing)
+  chunk_size: 100000
+
+# Skip steps if intermediate files already exist
+skip_xml_to_parquet: false
+skip_parquet_to_geojson: false

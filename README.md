@@ -1,13 +1,68 @@
-# utps_traffic_simulation
+# UTPS Traffic Simulation
 
 <a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-Processing of simulation data results from Swiss AI
+Processing and analysis of MATSim traffic simulation data for the Urban Traffic Pattern Synthesis project.
+
+## Overview
+
+This project provides tools and pipelines for processing large-scale traffic simulation data:
+- Convert MATSim event XML files to trajectory GeoJSON
+- Filter events by time and spatial boundaries
+- Interpolate agent positions at configurable time resolutions (1s, 20s)
+- Visualize traffic patterns in GIS applications
+
+## Quick Start
+
+### Installation
+
+```bash
+# Clone or navigate to the repository
+cd utps-ts-repo
+
+# Create and activate conda environment
+make create_environment
+conda activate utps-ts-repo
+
+# Install dependencies
+make requirements
+```
+
+### Running the Pipeline
+
+1. Place your data in the appropriate directory:
+   ```
+   data/raw/v4/
+   ├── events.xml      # MATSim events file
+   └── network.gpkg    # Road network GeoPackage
+   ```
+
+2. Choose or create a configuration file (see `configs/`)
+
+3. Run the pipeline:
+   ```bash
+   python -m traffic_sim_module.pipelines.main_pipeline configs/v4_morning_rush.yaml
+   ```
+
+### Example: Morning Rush Hour Analysis
+
+```bash
+# Process morning rush hour (7:30 AM - 9:00 AM)
+python -m traffic_sim_module.pipelines.main_pipeline configs/v4_morning_rush.yaml
+```
+
+Output will be in `data/processed/v4_morning_rush_trajectories.geojson`
+
+## Documentation
+
+- **[MIGRATION.md](MIGRATION.md)** - Migration guide from old structure
+- **[configs/README.md](configs/README.md)** - Configuration file documentation
+- **[scripts/README.md](scripts/README.md)** - Utility scripts documentation
+- **[docs/](docs/)** - Detailed documentation (MkDocs)
 
 ## Project Organization
-testchange
 ```
 ├── LICENSE            <- Open-source license if one is chosen
 ├── Makefile           <- Makefile with convenience commands like `make data` or `make train`

@@ -1,0 +1,30 @@
+# Pipeline Configuration File
+# All paths can be absolute or relative
+
+paths:
+  xml_input: /path/to/events.xml
+  gpkg_network: /path/to/network.gpkg
+  parquet_intermediate: /path/to/output/filtered_events.parquet
+  geojson_output: /path/to/output/trajectories.geojson
+
+filters:
+  # First time interval (format: hh:mm)
+  time_interval_1:
+    start: "07:30"
+    end: "09:00"
+  
+  # Second time interval (use same as first for single interval filtering)
+  time_interval_2:
+    start: "07:30"
+    end: "09:00"
+
+processing:
+  # Number of worker processes (omit to use all CPUs)
+  num_workers: 8
+  
+  # Chunk size for processing (larger = more memory, faster processing)
+  chunk_size: 100000
+
+# Skip steps if intermediate files already exist
+skip_xml_to_parquet: false
+skip_parquet_to_geojson: false

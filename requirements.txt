@@ -1,3 +1,4 @@
+# Core dependencies
 ipython
 jupyterlab
 matplotlib
@@ -9,4 +10,24 @@ pip
 python-dotenv
 ruff
 scikit-learn
+
+# Geospatial processing
+geopandas
+shapely
+
+# XML processing
+lxml
+
+# Configuration & validation
+pydantic>=2.0
+PyYAML
+
+# Data formats
+pyarrow
+
+# Logging
+loguru
+tqdm
+
+# Install package in editable mode
 -e .
