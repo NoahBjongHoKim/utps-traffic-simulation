@@ -59,7 +59,7 @@ Output will be in `data/processed/v4_morning_rush_trajectories.geojson`
 
 - **[MIGRATION.md](MIGRATION.md)** - Migration guide from old structure
 - **[configs/README.md](configs/README.md)** - Configuration file documentation
-- **[scripts/README.md](scripts/README.md)** - Utility scripts documentation
+- **[scripts/README.md](docs/SCRIPTS.md)** - Utility scripts documentation
 - **[docs/](docs/)** - Detailed documentation (MkDocs)
 
 ## Project Organization

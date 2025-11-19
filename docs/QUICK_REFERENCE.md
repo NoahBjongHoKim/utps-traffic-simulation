@@ -96,7 +96,7 @@ from traffic_sim_module.processing.transforms import time_to_timestamp
 
 # Pipeline functions
 from traffic_sim_module.pipelines.xml_to_parquet import xml_to_parquet_filtered
-from traffic_sim_module.pipelines.parquet_to_geojson import parquet_to_geojson
+from traffic_sim_module.pipelines.parquet_to_export import parquet_to_geojson
 
 # Configuration
 from traffic_sim_module.config import PipelineConfig

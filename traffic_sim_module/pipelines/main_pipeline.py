@@ -5,7 +5,7 @@ Date: 2025
 
 Coordinates the complete pipeline:
 1. XML -> Parquet (with time/spatial filtering)
-2. Parquet -> GeoJSON (with interpolation)
+2. Parquet -> export (with interpolation)
 
 Configuration via YAML file with Pydantic validation.
 
@@ -26,28 +26,11 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional
 
 from .xml_to_parquet import xml_to_parquet_filtered
-from .parquet_to_geojson import parquet_to_geojson
+from .parquet_to_export import parquet_to_export
 from ..config import logger
 from ..utils.network_cache import load_network_cached, build_link_attributes_dict
 
 
-class TimeInterval(BaseModel):
-    """Time interval with format validation."""
-    start: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="Start time (hh:mm)")
-    end: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="End time (hh:mm)")
-
-    @field_validator('start', 'end')
-    @classmethod
-    def validate_time_format(cls, v: str) -> str:
-        """Validate time is within 24-hour format."""
-        hours, minutes = map(int, v.split(':'))
-        if not (0 <= hours <= 23 and 0 <= minutes <= 59):
-            raise ValueError(f"Invalid time: {v}. Hours must be 0-23, minutes 0-59.")
-        return v
-
-    def to_string(self) -> str:
-        """Convert to 'hh:mm,hh:mm' format."""
-        return f"{self.start},{self.end}"
 
 
 class PathConfig(BaseModel):
@@ -57,7 +40,7 @@ class PathConfig(BaseModel):
     xml_input: Path = Field(..., description="Input XML file with events")
     gpkg_network: Path = Field(..., description="Input GeoPackage with road network")
     parquet_intermediate: Path = Field(..., description="Intermediate Parquet file")
-    geojson_output: Path = Field(..., description="Final GeoJSON output")
+    output_base: Path = Field(..., description="Base path for output files (without extension)")
 
     @field_validator('xml_input', 'gpkg_network')
     @classmethod
@@ -67,24 +50,29 @@ class PathConfig(BaseModel):
             raise ValueError(f"Input file does not exist: {v}")
         return v
 
-    @field_validator('parquet_intermediate', 'geojson_output')
+    @field_validator('parquet_intermediate', 'output_base')
     @classmethod
-    def validate_output_dir(cls, v: Path) -> Path:
+    def validate_output_dir(cls, v: Optional[Path]) -> Optional[Path]:
         """Check that output directory exists."""
-        if not v.parent.exists():
+        if v is not None and not v.parent.exists():
             raise ValueError(f"Output directory does not exist: {v.parent}")
         return v
 
 
 class FilterConfig(BaseModel):
     """Filtering parameters configuration."""
-    time_interval_1: TimeInterval = Field(..., description="First time interval")
-    time_interval_2: TimeInterval = Field(..., description="Second time interval")
+    start_time: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="Start time for snapshots (hh:mm)")
+    end_time: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="End time for snapshots (hh:mm)")
+    frequency_seconds: int = Field(..., ge=1, description="Frequency between snapshots (seconds)")
+    duration_seconds: int = Field(..., ge=1, description="Duration of each snapshot (seconds)")
 
-    @field_validator('time_interval_2')
+    @field_validator('start_time', 'end_time')
     @classmethod
-    def validate_intervals(cls, v: TimeInterval, info) -> TimeInterval:
-        """Ensure interval_2 is provided (can be same as interval_1 for single interval)."""
+    def validate_time_format(cls, v: str) -> str:
+        """Validate time is within 24-hour format."""
+        hours, minutes = map(int, v.split(':'))
+        if not (0 <= hours <= 23 and 0 <= minutes <= 59):
+            raise ValueError(f"Invalid time: {v}. Hours must be 0-23, minutes 0-59.")
         return v
 
 
@@ -92,12 +80,26 @@ class ProcessingConfig(BaseModel):
     """Processing parameters configuration."""
     num_workers: Optional[int] = Field(None, ge=1, description="Number of worker processes")
     chunk_size: int = Field(100000, ge=1000, description="Chunk size for processing")
+    output_formats: list[str] = Field(
+        default=["geojson"],
+        description="Output formats: geojson, csv, parquet, geoparquet"
+    )
 
     @field_validator('num_workers')
     @classmethod
     def set_default_workers(cls, v: Optional[int]) -> int:
         """Set default to CPU count if not specified."""
         return v if v is not None else mp.cpu_count()
+
+    @field_validator('output_formats')
+    @classmethod
+    def validate_output_formats(cls, v: list[str]) -> list[str]:
+        """Validate output formats."""
+        valid_formats = {'geojson', 'csv', 'parquet', 'geoparquet'}
+        for fmt in v:
+            if fmt not in valid_formats:
+                raise ValueError(f"Invalid output format: {fmt}. Must be one of {valid_formats}")
+        return v
 
 
 class PipelineConfig(BaseModel):
@@ -106,7 +108,7 @@ class PipelineConfig(BaseModel):
     filters: FilterConfig
     processing: ProcessingConfig = Field(default_factory=ProcessingConfig)
     skip_xml_to_parquet: bool = Field(False, description="Skip step 1 if Parquet exists")
-    skip_parquet_to_geojson: bool = Field(False, description="Skip step 2 if GeoJSON exists")
+    skip_parquet_to_export: bool = Field(False, description="Skip step 2 if export exists")
 
 
 def load_config(config_path: str) -> PipelineConfig:
@@ -115,6 +117,44 @@ def load_config(config_path: str) -> PipelineConfig:
         config_dict = yaml.safe_load(f)
 
     return PipelineConfig(**config_dict)
+
+
+def generate_snapshot_intervals(start_time: str, end_time: str,
+                                frequency_seconds: int, duration_seconds: int) -> list[tuple[int, int]]:
+    """
+    Generate list of (start, end) time intervals in seconds from snapshot config.
+
+    Args:
+        start_time: Start time as "hh:mm"
+        end_time: End time as "hh:mm"
+        frequency_seconds: Seconds between snapshots
+        duration_seconds: Duration of each snapshot
+
+    Returns:
+        List of (start_seconds, end_seconds) tuples
+
+    Example:
+        generate_snapshot_intervals("12:00", "12:15", 300, 5)
+        # Returns: [(43200, 43205), (43500, 43505), (43800, 43805)]
+        # That's 12:00:00-12:00:05, 12:05:00-12:05:05, 12:10:00-12:10:05
+    """
+    # Convert times to seconds
+    h_start, m_start = map(int, start_time.split(':'))
+    h_end, m_end = map(int, end_time.split(':'))
+
+    start_seconds = h_start * 3600 + m_start * 60
+    end_seconds = h_end * 3600 + m_end * 60
+
+    intervals = []
+    current = start_seconds
+
+    while current + duration_seconds <= end_seconds:
+        intervals.append((current, current + duration_seconds))
+        current += frequency_seconds
+
+    logger.info(f"Generated {len(intervals)} snapshot intervals ({duration_seconds}s duration, every {frequency_seconds}s)")
+
+    return intervals
 
 
 def print_config_summary(config: PipelineConfig):
@@ -138,11 +178,23 @@ def print_config_summary(config: PipelineConfig):
 
     logger.info("Output Files:")
     logger.info(f"  Intermediate Parquet: {config.paths.parquet_intermediate}")
-    logger.info(f"  Final GeoJSON:        {config.paths.geojson_output}")
+    logger.info(f"  Output base:          {config.paths.output_base}")
+    logger.info(f"  Output formats:       {', '.join(config.processing.output_formats)}")
 
     logger.info("Filters:")
-    logger.info(f"  Time Interval 1: {config.filters.time_interval_1.start} - {config.filters.time_interval_1.end}")
-    logger.info(f"  Time Interval 2: {config.filters.time_interval_2.start} - {config.filters.time_interval_2.end}")
+    logger.info(f"  Snapshot mode:")
+    logger.info(f"    Period: {config.filters.start_time} - {config.filters.end_time}")
+    logger.info(f"    Frequency: every {config.filters.frequency_seconds}s")
+    logger.info(f"    Duration: {config.filters.duration_seconds}s per snapshot")
+
+    # Calculate how many intervals
+    intervals = generate_snapshot_intervals(
+        config.filters.start_time,
+        config.filters.end_time,
+        config.filters.frequency_seconds,
+        config.filters.duration_seconds
+    )
+    logger.info(f"    Total snapshots: {len(intervals)}")
 
     logger.info("Processing:")
     logger.info(f"  Workers:     {config.processing.num_workers}")
@@ -150,7 +202,7 @@ def print_config_summary(config: PipelineConfig):
 
     logger.info("Pipeline Steps:")
     logger.info(f"  Skip XML->Parquet:       {config.skip_xml_to_parquet}")
-    logger.info(f"  Skip Parquet->GeoJSON:   {config.skip_parquet_to_geojson}")
+    logger.info(f"  Skip Parquet->export:   {config.skip_parquet_to_export}")
     logger.info("="*80)
 
 
@@ -193,13 +245,20 @@ def main(config_path: str):
         logger.info("="*80)
         start = time.time()
 
+        # Generate time intervals from snapshot config
+        time_intervals = generate_snapshot_intervals(
+            config.filters.start_time,
+            config.filters.end_time,
+            config.filters.frequency_seconds,
+            config.filters.duration_seconds
+        )
+
         try:
             xml_to_parquet_filtered(
                 xml_input=str(config.paths.xml_input),
                 valid_links=valid_links,
                 parquet_output=str(config.paths.parquet_intermediate),
-                time_interval_1=config.filters.time_interval_1.to_string(),
-                time_interval_2=config.filters.time_interval_2.to_string(),
+                time_intervals=time_intervals,
                 num_workers=config.processing.num_workers,
                 chunk_size=config.processing.chunk_size
             )
@@ -222,18 +281,19 @@ def main(config_path: str):
             size_mb = config.paths.parquet_intermediate.stat().st_size / (1024 * 1024)
             logger.info(f"Existing Parquet: {config.paths.parquet_intermediate} ({size_mb:.2f} MB)")
 
-    # Step 2: Parquet -> GeoJSON
-    if not config.skip_parquet_to_geojson:
+    # Step 2: Parquet -> export
+    if not config.skip_parquet_to_export:
         logger.info("="*80)
-        logger.info("STAGE 2: Parquet -> GeoJSON")
+        logger.info("STAGE 2: Parquet -> Export")
         logger.info("="*80)
         start = time.time()
 
         try:
-            parquet_to_geojson(
+            parquet_to_export(
                 parquet_input=str(config.paths.parquet_intermediate),
                 link_attrs=link_attrs,
-                geojson_output=str(config.paths.geojson_output),
+                output_base=str(config.paths.output_base),
+                output_formats=config.processing.output_formats,
                 num_workers=config.processing.num_workers,
                 chunk_size=config.processing.chunk_size
             )
@@ -244,22 +304,22 @@ def main(config_path: str):
 
         elapsed = time.time() - start
         logger.success(f"Step 2 completed in {elapsed:.2f} seconds ({elapsed/60:.1f} minutes)")
-        if config.paths.geojson_output.exists():
-            size_mb = config.paths.geojson_output.stat().st_size / (1024 * 1024)
-            logger.info(f"Output GeoJSON: {config.paths.geojson_output} ({size_mb:.2f} MB)")
+        if config.paths.output_base.exists():
+            size_mb = config.paths.output_base.stat().st_size / (1024 * 1024)
+            logger.info(f"Output : {config.paths.output_base} ({size_mb:.2f} MB)")
     else:
-        logger.info("STEP 2: Skipped (using existing GeoJSON)")
-        if not config.paths.geojson_output.exists():
-            logger.error(f"GeoJSON file does not exist: {config.paths.geojson_output}")
+        logger.info("STEP 2: Skipped (using existing export)")
+        if not config.paths.output_base.exists():
+            logger.error(f"export file does not exist: {config.paths.output_base}")
             return 1
-        if config.paths.geojson_output.exists():
-            size_mb = config.paths.geojson_output.stat().st_size / (1024 * 1024)
-            logger.info(f"Existing GeoJSON: {config.paths.geojson_output} ({size_mb:.2f} MB)")
+        if config.paths.output_base.exists():
+            size_mb = config.paths.output_base.stat().st_size / (1024 * 1024)
+            logger.info(f"Existing export: {config.paths.output_base} ({size_mb:.2f} MB)")
 
     logger.info("="*80)
     logger.info("PIPELINE COMPLETED SUCCESSFULLY")
     logger.info("="*80)
-    logger.info(f"Final output: {config.paths.geojson_output}")
+    logger.info(f"Final output: {config.paths.output_base}")
 
     return 0
 

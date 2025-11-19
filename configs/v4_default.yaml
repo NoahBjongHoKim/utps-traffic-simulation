@@ -1,0 +1,35 @@
+# Pipeline Configuration File
+# All paths can be absolute or relative
+
+paths:
+  xml_input: /Users/noahkim/Documents/UTPS/Traffic_Sim/utps-ts-repo/data/raw/events_v4.xml
+  gpkg_network: /Users/noahkim/Documents/UTPS/Traffic_Sim/utps-ts-repo/data/raw/road_network_v4_clipped_single.gpkg
+  parquet_intermediate: /Users/noahkim/Documents/UTPS/Traffic_Sim/utps-ts-repo/data/interim/filtered_events.parquet
+  output_base: /Users/noahkim/Documents/UTPS/Traffic_Sim/utps-ts-repo/data/processed/trajectories_full
+
+filters:
+  # Snapshot-based filtering
+  start_time: "00:00"         # Start of sampling period
+  end_time: "23:00"           # End of sampling period
+  frequency_seconds: 300      # Take a snapshot every 5 minutes
+  duration_seconds: 5         # Each snapshot is 5 seconds long
+
+  # Note: LeaveLink times are automatically clipped to snapshot end
+  # This ensures trajectories stay within the 5-second window
+
+processing:
+  # Number of worker processes (omit to use all CPUs)
+  num_workers: 6
+
+  # Chunk size for processing (larger = more memory, faster processing)
+  chunk_size: 100000
+
+  # Output formats (can specify multiple)
+  output_formats:
+    - geojson
+    - csv
+    - geoparquet
+
+# Skip steps if intermediate files already exist
+skip_xml_to_parquet: false
+skip_parquet_to_geojson: false

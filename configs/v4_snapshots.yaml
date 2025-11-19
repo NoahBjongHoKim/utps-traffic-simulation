@@ -1,0 +1,40 @@
+# Snapshot-based filtering configuration
+# Creates regular "snapshots" of traffic movement
+#
+# Example: 5-second snapshots every 5 minutes between 12:00-15:00
+# - 12:00:00 - 12:00:05 (interval_id: 0)
+# - 12:05:00 - 12:05:05 (interval_id: 1)
+# - 12:10:00 - 12:10:05 (interval_id: 2)
+# ... (36 total snapshots)
+
+paths:
+  xml_input: data/raw/output_events.xml.gz
+  gpkg_network: data/raw/road_network_v4_clipped.gpkg
+  parquet_intermediate: data/interim/filtered_events_snapshots.parquet
+  output_base: data/processed/trajectories_snapshots  # No extension!
+
+filters:
+  # Snapshot-based filtering
+  start_time: "12:00"         # Start of sampling period
+  end_time: "15:00"           # End of sampling period
+  frequency_seconds: 300      # Take a snapshot every 5 minutes
+  duration_seconds: 5         # Each snapshot is 5 seconds long
+
+  # Note: LeaveLink times are automatically clipped to snapshot end
+  # This ensures trajectories stay within the 5-second window
+
+processing:
+  num_workers: 8              # Use 8 CPU cores
+  chunk_size: 50000           # Process 50k events per chunk
+
+  # Output formats (can specify multiple)
+  output_formats:
+    - geojson                 # For web visualization
+    - csv                     # For spreadsheet/quick analysis
+    - geoparquet              # For ArcGIS (efficient spatial format)
+
+  # Each point includes interval_id for grouping by snapshot
+
+# Skip flags (useful for testing)
+skip_xml_to_parquet: false
+skip_parquet_to_geojson: false

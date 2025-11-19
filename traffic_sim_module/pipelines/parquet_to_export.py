@@ -11,10 +11,16 @@ Reads filtered Parquet events and creates GeoJSON with:
 
 import pandas as pd
 import pyarrow.parquet as pq
+import pyarrow as pa
 import json
 import math
 import multiprocessing as mp
 from datetime import datetime, timedelta
+from pathlib import Path
+import csv as csv_module
+import geopandas as gpd
+from shapely.geometry import Point
+from shapely import wkb
 
 # Handle both module import and direct script execution
 try:
@@ -152,31 +158,29 @@ def get_travel_endpoints(link_id, link_attrs):
 
 def interpolate_trajectory(link_id, time_enter, time_leave,
                           start_coords, end_coords, person_id,
-                          freespeed, link_length, bearing):
+                          freespeed, link_length, bearing, interval_id):
     """Interpolate points along trajectory with 1-second resolution."""
     time_delta = time_leave - time_enter
 
     if time_delta <= 0:
         return []
 
-    speed_fraction = round((link_length / time_delta) / freespeed, 1)
-    
     features = []
     for t in range(time_delta + 1):
         fraction = t / time_delta
         x = round(start_coords[0] + fraction * (end_coords[0] - start_coords[0]), 12)
         y = round(start_coords[1] + fraction * (end_coords[1] - start_coords[1]), 12)
-        
+
         feature = {
             "geometry": {
                 "type": "Point",
                 "coordinates": [x, y]
             },
             "properties": {
-                "t": time_to_timestamp(time_enter + t),
-                "a": bearing,
-                "id": person_id,
-                "s": speed_fraction
+                "timestamp": time_to_timestamp(time_enter + t),
+                "angle": bearing,
+                "person_id": person_id,
+                "interval_id": interval_id
             }
         }
         features.append(feature)
@@ -221,7 +225,8 @@ def process_parquet_chunk(args):
                 row['person'],
                 attrs.get('freespeed'),
                 attrs.get('length'),
-                bearing
+                bearing,
+                row['interval_id']  # Pass interval_id through
             )
 
             all_features.extend(features)
@@ -236,17 +241,20 @@ def process_parquet_chunk(args):
     return all_features
 
 
-def parquet_to_geojson(parquet_input, link_attrs, geojson_output,
-                       num_workers, chunk_size, gpkg_network=None):
-    """Main function to convert Parquet to GeoJSON with interpolation.
+def parquet_to_export(parquet_input, link_attrs, output_base,
+                       output_formats, num_workers, chunk_size,
+                       gpkg_network=None):
+    """Main function to convert Parquet to multiple output formats with interpolation.
 
     Args:
         parquet_input: Path to input Parquet file
         link_attrs: Pre-loaded link attributes dictionary or None to load from gpkg_network
-        geojson_output: Path to output GeoJSON file
+        output_base: Base path for output files (without extension)
+        output_formats: List of formats to generate (geojson, csv, parquet, geoparquet)
         num_workers: Number of worker processes
         chunk_size: Chunk size for processing
         gpkg_network: Path to GeoPackage (optional, for standalone use)
+        geojson_output: Legacy parameter for backward compatibility
     """
 
     # Load network if not provided (for standalone use)
@@ -263,51 +271,130 @@ def parquet_to_geojson(parquet_input, link_attrs, geojson_output,
     total_rows = parquet_file.metadata.num_rows
     logger.info(f"Total events to process: {total_rows:,}")
 
+    # Setup output files
+    output_paths = {}
+    for fmt in output_formats:
+        output_paths[fmt] = f"{output_base}.{fmt}"
+
+    logger.info(f"Output files:")
+    for fmt, path in output_paths.items():
+        logger.info(f"  {fmt}: {path}")
+
     # Setup multiprocessing
     logger.info(f"Initializing multiprocessing pool with {num_workers} workers")
     pool = mp.Pool(num_workers)
 
     # Process in chunks using multiprocessing
-    logger.info("Creating GeoJSON features with interpolation...")
+    logger.info("Creating trajectory features with interpolation...")
+
+    # Open all output writers
+    writers = {}
 
     try:
-        with open(geojson_output, 'w') as f:
-            f.write('{"type": "FeatureCollection", "features": [\n')
+        # GeoJSON writer
+        if 'geojson' in output_formats:
+            writers['geojson'] = open(output_paths['geojson'], 'w')
+            writers['geojson'].write('{"type": "FeatureCollection", "features": [\n')
+            writers['geojson_first'] = True
 
-            first = True
-            processed = 0
-            batches_processed = 0
+        # CSV writer
+        if 'csv' in output_formats:
+            csv_file = open(output_paths['csv'], 'w', newline='')
+            csv_writer = csv_module.writer(csv_file)
+            csv_writer.writerow(['x', 'y', 'timestamp', 'angle', 'person_id', 'interval_id'])  # Header
+            writers['csv'] = csv_file
+            writers['csv_writer'] = csv_writer
 
-            # Create iterator of (df, link_attrs) tuples for all batches
-            def batch_generator():
-                for batch in parquet_file.iter_batches(batch_size=chunk_size):
-                    df = batch.to_pandas()
-                    yield (df, link_attrs)
+        # Parquet/GeoParquet - collect all features first
+        if 'parquet' in output_formats or 'geoparquet' in output_formats:
+            writers['features_list'] = []
 
-            # Process batches in parallel using the pool
-            for features in pool.imap_unordered(process_parquet_chunk, batch_generator()):
-                # Write features from this batch
-                for feature in features:
-                    if not first:
-                        f.write(',\n')
-                    json.dump(feature, f)
-                    first = False
+        processed = 0
+        batches_processed = 0
 
-                processed += chunk_size  # Approximate (last batch may be smaller)
-                batches_processed += 1
+        # Create iterator of (df, link_attrs) tuples for all batches
+        def batch_generator():
+            for batch in parquet_file.iter_batches(batch_size=chunk_size):
+                df = batch.to_pandas()
+                yield (df, link_attrs)
 
-                # Log progress every 10 batches
-                if batches_processed % 10 == 0:
-                    progress = min(100, (processed / total_rows) * 100)
-                    logger.info(f"Progress: {min(processed, total_rows):,}/{total_rows:,} events ({progress:.1f}%)")
+        # Process batches in parallel using the pool
+        for features in pool.imap_unordered(process_parquet_chunk, batch_generator()):
+            # Write features to all formats
+            for feature in features:
+                props = feature['properties']
+                coords = feature['geometry']['coordinates']
 
-            f.write('\n]}')
+                # GeoJSON
+                if 'geojson' in output_formats:
+                    if not writers['geojson_first']:
+                        writers['geojson'].write(',\n')
+                    json.dump(feature, writers['geojson'])
+                    writers['geojson_first'] = False
+
+                # CSV
+                if 'csv' in output_formats:
+                    writers['csv_writer'].writerow([
+                        coords[0], coords[1],  # x, y
+                        props['timestamp'], props['angle'], props['person_id'],
+                        props['interval_id']
+                    ])
+
+                # Collect for Parquet/GeoParquet
+                if 'parquet' in output_formats or 'geoparquet' in output_formats:
+                    writers['features_list'].append({
+                        'x': coords[0],
+                        'y': coords[1],
+                        'timestamp': props['timestamp'],
+                        'angle': props['angle'],
+                        'person_id': props['person_id'],
+                        'interval_id': props['interval_id']
+                    })
+
+            processed += chunk_size  # Approximate (last batch may be smaller)
+            batches_processed += 1
+
+            # Log progress every 10 batches
+            if batches_processed % 10 == 0:
+                progress = min(100, (processed / total_rows) * 100)
+                logger.info(f"Progress: {min(processed, total_rows):,}/{total_rows:,} events ({progress:.1f}%)")
+
+        # Close GeoJSON
+        if 'geojson' in output_formats:
+            writers['geojson'].write('\n]}')
+            writers['geojson'].close()
+            logger.success(f"GeoJSON created: {output_paths['geojson']}")
+
+        # Close CSV
+        if 'csv' in output_formats:
+            writers['csv'].close()
+            logger.success(f"CSV created: {output_paths['csv']}")
+
+        # Write Parquet
+        if 'parquet' in output_formats:
+            df_out = pd.DataFrame(writers['features_list'])
+            df_out.to_parquet(output_paths['parquet'], index=False)
+            logger.success(f"Parquet created: {output_paths['parquet']}")
+
+        # Write GeoParquet
+        if 'geoparquet' in output_formats:
+            df_out = pd.DataFrame(writers['features_list'])
+            # Create geometry from x, y
+            geometry = [Point(row['x'], row['y']) for _, row in df_out.iterrows()]
+            gdf_out = gpd.GeoDataFrame(df_out.drop(columns=['x', 'y']), geometry=geometry, crs='EPSG:4326')
+            gdf_out.to_parquet(output_paths['geoparquet'])
+            logger.success(f"GeoParquet created: {output_paths['geoparquet']}")
 
     finally:
+        # Clean up any open file handles
+        for key, val in writers.items():
+            if hasattr(val, 'close'):
+                try:
+                    val.close()
+                except:
+                    pass
         pool.close()
         pool.join()
-
-    logger.success(f"GeoJSON created: {geojson_output}")
 
 
 if __name__ == "__main__":
@@ -316,24 +403,29 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--parquet_input", required=True)
     parser.add_argument("--gpkg_network", required=True)
-    parser.add_argument("--geojson_output", required=True)
+    parser.add_argument("--output_base", required=True, help="Base path for output (without extension)")
+    parser.add_argument("--output_formats", nargs='+', default=['geojson'],
+                       help="Output formats: geojson, csv, parquet, geoparquet")
     parser.add_argument("--num_workers", type=int, default=mp.cpu_count())
     parser.add_argument("--chunk_size", type=int, default=10000)
 
     args = parser.parse_args()
 
-    parquet_to_geojson(
+    parquet_to_export(
         parquet_input=args.parquet_input,
         link_attrs=None,  # Will be loaded from gpkg_network
-        geojson_output=args.geojson_output,
+        output_base=args.output_base,
+        output_formats=args.output_formats,
         num_workers=args.num_workers,
         chunk_size=args.chunk_size,
         gpkg_network=args.gpkg_network
     )
-    # parquet_to_geojson(
+    # parquet_to_export(
     #     "/Users/noahkim/Documents/UTPS/Traffic_Sim/utps-ts-repo/data/interim/filtered_events_test.parquet",
-    #     "/Users/noahkim/Documents/UTPS/Traffic_Sim/utps-ts-repo/data/raw/road_network_v4.gpkg",
+    #     None,
     #     "/Users/noahkim/Documents/UTPS/Traffic_Sim/utps-ts-repo/data/interim/filtered_events_test.geojson",
+    #     ["geojson", "csv", "parquet", "geoparquet"],
     #     6,
-    #     1000,
+    #     30000,
+    #     "/Users/noahkim/Documents/UTPS/Traffic_Sim/utps-ts-repo/data/raw/road_network_v4_clipped_single.gpkg"
     # )
