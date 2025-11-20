@@ -4,16 +4,21 @@ paths:
   parquet_intermediate: data/interim/filtered_events.parquet
   output_base: data/processed/trajectories_full
 filters:
-  start_time: 00:00
-  end_time: '23:59'
+  start_time: '12:00'
+  end_time: '15:00'
   frequency_seconds: 300
   duration_seconds: 5
 processing:
   num_workers: 6
   chunk_size: 100000
   output_formats:
-  - geojson
   - csv
   - geoparquet
+  heatmap_enabled: true
+  heatmap_time_interval: 300
+  heatmap_output_formats:
+  - csv
+  - geoparquet
+  heatmap_output_base: data/processed/heatmap
 skip_xml_to_parquet: false
 skip_parquet_to_geojson: false

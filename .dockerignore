@@ -1,0 +1,112 @@
+# Docker-specific ignore file
+# This tells Docker what NOT to copy into the image during build
+# Keeping the image small and builds fast!
+
+# IMPORTANT: Data directory (too big, will be mounted as volume instead)
+data/
+gis/
+
+# Logs (will be mounted as volume)
+logs/
+*.log
+*.log.zip
+
+# Git repository (not needed in container)
+.git/
+.gitignore
+.gitattributes
+
+# Docker files themselves
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# IDE settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python cache and build files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Testing and coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+notebooks/.ipynb_checkpoints/
+
+# Virtual environments (not needed in container)
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Documentation build output
+docs/site/
+site/
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# Linters
+.ruff_cache/
+
+# Archive directory if you have one
+archive/
+
+# Claude settings
+.claude/
+
+# README files (optional, but documentation can go in docs/)
+# Uncomment if you want to exclude:
+# README.md
+# LICENSE
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/

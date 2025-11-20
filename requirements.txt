@@ -1,33 +1,14 @@
-# Core dependencies
-ipython
-jupyterlab
-matplotlib
-mkdocs
-notebook
-numpy
-pandas
-pip
-python-dotenv
-ruff
-scikit-learn
-
-# Geospatial processing
-geopandas
-shapely
-
-# XML processing
-lxml
-
-# Configuration & validation
-pydantic>=2.0
-PyYAML
-
-# Data formats
-pyarrow
-
-# Logging
-loguru
-tqdm
+geopandas==1.1.1
+loguru==0.7.3
+lxml==6.0.2
+pandas==2.3.3
+pyarrow==21.0.0
+pydantic==2.12.4
+PyYAML==6.0.3
+Shapely==2.1.2
+streamlit==1.51.0
+tqdm==4.67.1
 
 # Install package in editable mode
+# This makes 'traffic_sim_module' importable as a package
 -e .

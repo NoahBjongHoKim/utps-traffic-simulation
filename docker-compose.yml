@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # Main traffic simulation application
+  traffic-sim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # Container name for easy reference
+    container_name: utps-traffic-sim
+
+    # Port mapping: host:container
+    # Access the Streamlit GUI at http://localhost:8501
+    ports:
+      - "8501:8501"
+
+    # Volume mounts - THIS IS KEY FOR YOUR WORKFLOW
+    # Volumes allow you to:
+    # 1. Share data between your computer and the container
+    # 2. Edit code on your computer and see changes in the container
+    # 3. Keep logs and configs even after container restarts
+    volumes:
+      # Mount your data directory (THIS IS NOT COPIED TO THE IMAGE)
+      # Format: ./host-path:/container-path
+      - ./data:/app/data
+
+      # Mount configs so you can edit them easily
+      - ./configs:/app/configs
+
+      # Mount logs so they persist
+      - ./logs:/app/logs
+
+      # Mount the entire code directory for development
+      # This lets you edit Python files and see changes immediately
+      - ./traffic_sim_module:/app/traffic_sim_module
+      - ./scripts:/app/scripts
+
+      # Optional: mount notebooks if you use Jupyter
+      - ./notebooks:/app/notebooks
+
+    # Environment variables
+    environment:
+      # Set Python to unbuffered mode so you see logs in real-time
+      - PYTHONUNBUFFERED=1
+
+      # Optional: Add any other environment variables from your .env file
+      # - MY_VARIABLE=value
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Optional: Add resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 4G
+
+  # Optional: Jupyter Lab service for notebooks
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: utps-jupyter
+
+    # Override the default command to run Jupyter instead of Streamlit
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
+
+    ports:
+      - "8888:8888"
+
+    volumes:
+      - ./data:/app/data
+      - ./configs:/app/configs
+      - ./logs:/app/logs
+      - ./traffic_sim_module:/app/traffic_sim_module
+      - ./scripts:/app/scripts
+      - ./notebooks:/app/notebooks
+
+    environment:
+      - PYTHONUNBUFFERED=1
+
+    restart: unless-stopped
+
+    # This service is optional, comment out if not needed
+    profiles:
+      - jupyter

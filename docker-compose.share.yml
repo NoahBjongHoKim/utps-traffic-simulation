@@ -1,0 +1,31 @@
+# Simplified docker-compose for sharing
+# Your friend uses this file instead of building the image themselves
+# Replace 'yourusername' with your actual Docker Hub username
+
+version: '3.8'
+
+services:
+  traffic-sim:
+    # Use pre-built image from Docker Hub
+    # No build step needed!
+    image: noahbjonghokim/utps-traffic-sim:latest
+
+    container_name: utps-traffic-sim
+
+    ports:
+      - "8501:8501"
+
+    volumes:
+      # Friend only needs to provide the data directory
+      - ./data:/app/data
+
+      # Optional: if they want to customize configs
+      - ./configs:/app/configs
+
+      # Optional: to see logs
+      - ./logs:/app/logs
+
+    environment:
+      - PYTHONUNBUFFERED=1
+
+    restart: unless-stopped

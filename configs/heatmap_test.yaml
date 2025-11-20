@@ -1,0 +1,22 @@
+paths:
+  xml_input: data/interim/20_min.xml
+  gpkg_network: data/raw/road_network_v4_clipped_single.gpkg
+  parquet_intermediate: data/interim/filtered_events.parquet
+  output_base: data/processed/trajectories_test
+filters:
+  start_time: 08:30
+  end_time: 08:40
+  frequency_seconds: 300
+  duration_seconds: 5
+processing:
+  num_workers: 6
+  chunk_size: 50000
+  output_formats: []
+  heatmap_enabled: true
+  heatmap_time_interval: 300
+  heatmap_output_formats:
+  - geojson
+  - csv
+  heatmap_output_base: data/processed/heatmap_test
+skip_xml_to_parquet: false
+skip_parquet_to_geojson: true

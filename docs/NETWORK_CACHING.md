@@ -60,7 +60,7 @@ No changes needed - the caching is transparent!
 
 ```python
 # In your pipeline - caching happens automatically
-from traffic_sim_module.pipelines.parquet_to_export import parquet_to_geojson
+from traffic_sim_module.pipeline.parquet_to_animation import parquet_to_geojson
 
 parquet_to_geojson(
     parquet_input="data/interim/filtered.parquet",

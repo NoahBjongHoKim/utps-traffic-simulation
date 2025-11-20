@@ -15,7 +15,7 @@ This directory contains YAML configuration files for the traffic simulation pipe
 Run the pipeline with a config file:
 
 ```bash
-python -m traffic_sim_module.pipelines.main_pipeline configs/v4_morning_rush.yaml
+python -m traffic_sim_module.pipeline.main_pipeline configs/v4_morning_rush.yaml
 ```
 
 ## Configuration Structure

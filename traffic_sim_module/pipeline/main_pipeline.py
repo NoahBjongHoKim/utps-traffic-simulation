@@ -26,7 +26,8 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional
 
 from .xml_to_parquet import xml_to_parquet_filtered
-from .parquet_to_export import parquet_to_export
+from .parquet_to_animation import parquet_to_export
+from .parquet_to_heatmap import parquet_to_heatmap
 from ..config import logger
 from ..utils.network_cache import load_network_cached, build_link_attributes_dict
 
@@ -84,6 +85,13 @@ class ProcessingConfig(BaseModel):
         default=["geojson"],
         description="Output formats: geojson, csv, parquet, geoparquet"
     )
+    heatmap_enabled: bool = Field(False, description="Enable heatmap export with vehicle counts")
+    heatmap_time_interval: int = Field(300, ge=60, description="Time interval for heatmap sampling (seconds)")
+    heatmap_output_formats: list[str] = Field(
+        default=["csv"],
+        description="Heatmap output formats: geojson, csv, parquet, geoparquet"
+    )
+    heatmap_output_base: str = Field("data/processed/heatmap", description="Base path for heatmap outputs")
 
     @field_validator('num_workers')
     @classmethod
@@ -91,7 +99,7 @@ class ProcessingConfig(BaseModel):
         """Set default to CPU count if not specified."""
         return v if v is not None else mp.cpu_count()
 
-    @field_validator('output_formats')
+    @field_validator('output_formats', 'heatmap_output_formats')
     @classmethod
     def validate_output_formats(cls, v: list[str]) -> list[str]:
         """Validate output formats."""
@@ -199,6 +207,13 @@ def print_config_summary(config: PipelineConfig):
     logger.info("Processing:")
     logger.info(f"  Workers:     {config.processing.num_workers}")
     logger.info(f"  Chunk size:  {config.processing.chunk_size:,}")
+
+    if config.processing.heatmap_enabled:
+        logger.info("Heatmap Export:")
+        logger.info(f"  Enabled:           True")
+        logger.info(f"  Time interval:     {config.processing.heatmap_time_interval}s")
+        logger.info(f"  Output base:       {config.processing.heatmap_output_base}")
+        logger.info(f"  Output formats:    {', '.join(config.processing.heatmap_output_formats)}")
 
     logger.info("Pipeline Steps:")
     logger.info(f"  Skip XML->Parquet:       {config.skip_xml_to_parquet}")
@@ -316,10 +331,46 @@ def main(config_path: str):
             size_mb = config.paths.output_base.stat().st_size / (1024 * 1024)
             logger.info(f"Existing export: {config.paths.output_base} ({size_mb:.2f} MB)")
 
+    # Step 3: Parquet -> Heatmap (optional)
+    if config.processing.heatmap_enabled:
+        logger.info("="*80)
+        logger.info("STAGE 3: Parquet -> Heatmap Export")
+        logger.info("="*80)
+        start = time.time()
+
+        # Calculate start and end times in seconds
+        h_start, m_start = map(int, config.filters.start_time.split(':'))
+        h_end, m_end = map(int, config.filters.end_time.split(':'))
+        start_sec = h_start * 3600 + m_start * 60
+        end_sec = h_end * 3600 + m_end * 60
+
+        try:
+            parquet_to_heatmap(
+                parquet_input=str(config.paths.parquet_intermediate),
+                link_attrs=link_attrs,
+                output_base=config.processing.heatmap_output_base,
+                output_formats=config.processing.heatmap_output_formats,
+                time_interval_seconds=config.processing.heatmap_time_interval,
+                start_time=start_sec,
+                end_time=end_sec,
+                num_workers=config.processing.num_workers
+            )
+        except Exception as e:
+            logger.error(f"Error in Step 3 (Heatmap): {e}")
+            logger.exception("Full traceback:")
+            return 1
+
+        elapsed = time.time() - start
+        logger.success(f"Step 3 (Heatmap) completed in {elapsed:.2f} seconds ({elapsed/60:.1f} minutes)")
+    else:
+        logger.info("STEP 3: Skipped (heatmap export not enabled)")
+
     logger.info("="*80)
     logger.info("PIPELINE COMPLETED SUCCESSFULLY")
     logger.info("="*80)
     logger.info(f"Final output: {config.paths.output_base}")
+    if config.processing.heatmap_enabled:
+        logger.info(f"Heatmap output: {config.processing.heatmap_output_base}")
 
     return 0
 

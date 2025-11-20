@@ -51,7 +51,7 @@ The pipeline now logs:
 ### Running the Pipeline
 ```bash
 # Run pipeline - logging is automatic
-python -m traffic_sim_module.pipelines.main_pipeline configs/v4_morning_rush.yaml
+python -m traffic_sim_module.pipeline.main_pipeline configs/v4_morning_rush.yaml
 
 # Log file created at: logs/pipeline_v4_morning_rush_YYYYMMDD_HHMMSS.log
 ```
@@ -216,7 +216,7 @@ pip install loguru
 The logging is already integrated! Just run your pipeline as normal:
 
 ```bash
-python -m traffic_sim_module.pipelines.main_pipeline configs/v4_morning_rush.yaml
+python -m traffic_sim_module.pipeline.main_pipeline configs/v4_morning_rush.yaml
 ```
 
 Check `logs/` directory for the log files.

@@ -166,7 +166,7 @@ make format
 
 ### 4. Run the Pipeline
 ```bash
-python -m traffic_sim_module.pipelines.main_pipeline configs/v4_morning_rush.yaml
+python -m traffic_sim_module.pipeline.main_pipeline configs/v4_morning_rush.yaml
 ```
 
 ### 5. Update Import Statements (if needed)

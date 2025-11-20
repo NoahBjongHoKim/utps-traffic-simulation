@@ -299,12 +299,21 @@ def build_link_attributes_dict(network_df: pd.DataFrame,
             y = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(delta_lon)
             bearing = round((math.degrees(math.atan2(x, y)) + 360) % 360)
 
+            # Calculate center point (for heatmaps)
+            try:
+                center_point = geom.interpolate(0.5, normalized=True)
+                link_center = (center_point.x, center_point.y)
+            except Exception as e:
+                logger.warning(f"Link {link_id}: Error calculating center: {e}, using midpoint")
+                link_center = ((travel_start[0] + travel_end[0]) / 2, (travel_start[1] + travel_end[1]) / 2)
+
             # Store precomputed values
             attrs['travel_start'] = travel_start
             attrs['travel_end'] = travel_end
             attrs['bearing'] = bearing
+            attrs['center'] = link_center
 
-        logger.success(f"Precomputed endpoints and bearings for {len(link_attrs):,} links")
+        logger.success(f"Precomputed endpoints, bearings, and centers for {len(link_attrs):,} links")
 
     logger.success(f"Dictionary created: {len(link_attrs):,} links")
     logger.debug(f"Sample link IDs (first 5): {list(link_attrs.keys())[:5]}")

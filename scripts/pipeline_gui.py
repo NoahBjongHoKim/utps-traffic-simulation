@@ -39,7 +39,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Import pipeline modules
-from traffic_sim_module.pipelines.main_pipeline import PipelineConfig
+from traffic_sim_module.pipeline.main_pipeline import PipelineConfig
 
 # ============================================================================
 # CONFIGURATION - Edit these to customize the GUI
@@ -53,10 +53,10 @@ PRESETS = {
 
 # Default values for new configs
 DEFAULTS = {
-    "xml_input": "data/raw/output_events.xml.gz",
-    "gpkg_network": "data/raw/road_network_v4_clipped.gpkg",
+    "xml_input": "data/raw/events_v4.xml",
+    "gpkg_network": "data/raw/road_network_v4_clipped_single.gpkg",
     "parquet_intermediate": "data/interim/filtered_events.parquet",
-    "output_base": "data/processed/trajectories",
+    "output_base": "data/processed/trajectories_full",
     "start_time": "12:00",
     "end_time": "15:00",
     "frequency_seconds": 300,  # 5 minutes
@@ -64,6 +64,10 @@ DEFAULTS = {
     "num_workers": 6,
     "chunk_size": 50000,
     "output_formats": ["geojson", "csv", "geoparquet"],
+    "heatmap_enabled": False,
+    "heatmap_time_interval": 300,  # 5 minutes
+    "heatmap_output_formats": ["csv"],
+    "heatmap_output_base": "data/processed/heatmap",
 }
 
 # Output format descriptions (for tooltips)
@@ -202,7 +206,7 @@ def run_pipeline(config_path: str):
     """Run the pipeline with the given config."""
     cmd = [
         sys.executable, "-m",
-        "traffic_sim_module.pipelines.main_pipeline",
+        "traffic_sim_module.pipeline.main_pipeline",
         str(config_path)
     ]
 
@@ -259,6 +263,17 @@ def main():
 
         # Track loaded config name for save field
         loaded_config_name = None
+
+        # Check if preset changed - if so, clear session state for path fields
+        if "last_loaded_preset" not in st.session_state:
+            st.session_state["last_loaded_preset"] = None
+
+        if load_preset_option != st.session_state["last_loaded_preset"]:
+            # Clear path field session state when changing presets
+            for key in ["xml_input", "gpkg_network", "parquet_intermediate", "output_base"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.session_state["last_loaded_preset"] = load_preset_option
 
         if load_preset_option != "Start fresh":
             config_dict = load_preset(f"configs/{load_preset_option}")
@@ -389,6 +404,58 @@ def main():
 
         st.divider()
 
+        # Heatmap Export Section
+        st.subheader("🗺️ Heatmap Export (Optional)")
+
+        heatmap_enabled = st.checkbox(
+            "Enable Heatmap Export",
+            value=config_dict.get("processing", {}).get("heatmap_enabled", DEFAULTS["heatmap_enabled"]),
+            help="Generate time-sampled heatmap data with vehicle counts per link"
+        )
+
+        if heatmap_enabled:
+            col1, col2 = st.columns(2)
+
+            with col1:
+                heatmap_time_interval = st.number_input(
+                    "Time Interval (seconds)",
+                    min_value=60,
+                    max_value=3600,
+                    value=config_dict.get("processing", {}).get("heatmap_time_interval", DEFAULTS["heatmap_time_interval"]),
+                    help="Sampling interval (e.g., 300 = 5 minutes)"
+                )
+
+                heatmap_output_base = st.text_input(
+                    "Heatmap Output Base Path",
+                    value=config_dict.get("processing", {}).get("heatmap_output_base", DEFAULTS["heatmap_output_base"]),
+                    help="Base path for heatmap outputs (without extension)"
+                )
+
+            with col2:
+                st.write("**Heatmap Output Formats**")
+                heatmap_output_formats = []
+                for fmt in ["geojson", "csv", "parquet", "geoparquet"]:
+                    default_checked = fmt in config_dict.get("processing", {}).get("heatmap_output_formats", DEFAULTS["heatmap_output_formats"])
+                    if st.checkbox(f"Heatmap {fmt.upper()}", value=default_checked, help=FORMAT_HELP[fmt], key=f"heatmap_{fmt}"):
+                        heatmap_output_formats.append(fmt)
+
+            # Calculate number of heatmap timepoints
+            try:
+                h_start, m_start = map(int, start_time.split(':'))
+                h_end, m_end = map(int, end_time.split(':'))
+                start_sec = h_start * 3600 + m_start * 60
+                end_sec = h_end * 3600 + m_end * 60
+                num_timepoints = (end_sec - start_sec) // heatmap_time_interval + 1
+                st.info(f"ℹ️ Heatmap will generate approximately **{num_timepoints}** timepoints at {heatmap_time_interval}s intervals")
+            except:
+                pass
+        else:
+            heatmap_time_interval = DEFAULTS["heatmap_time_interval"]
+            heatmap_output_formats = DEFAULTS["heatmap_output_formats"]
+            heatmap_output_base = DEFAULTS["heatmap_output_base"]
+
+        st.divider()
+
         # Skip options
         st.subheader("⏭️ Skip Options")
         col1, col2 = st.columns(2)
@@ -426,7 +493,11 @@ def main():
             "processing": {
                 "num_workers": int(num_workers),
                 "chunk_size": int(chunk_size),
-                "output_formats": output_formats
+                "output_formats": output_formats,
+                "heatmap_enabled": heatmap_enabled,
+                "heatmap_time_interval": int(heatmap_time_interval),
+                "heatmap_output_formats": heatmap_output_formats,
+                "heatmap_output_base": heatmap_output_base
             },
             "skip_xml_to_parquet": skip_xml,
             "skip_parquet_to_geojson": skip_geojson

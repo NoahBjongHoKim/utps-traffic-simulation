@@ -1,5 +1,0 @@
-öffentlicher Nexcloud link zu anderen Teil der Traffic Simulation. 
-Codes sind wahrscheinlich dupliziert.
-
-
-https://nextcloud.ethz.ch/s/axbcoy4z37PjH7H

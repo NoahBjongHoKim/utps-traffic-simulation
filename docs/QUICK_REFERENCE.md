@@ -18,12 +18,12 @@ make clean
 
 ```bash
 # Basic usage
-python -m traffic_sim_module.pipelines.main_pipeline <config.yaml>
+python -m traffic_sim_module.pipeline.main_pipeline <config.yaml>
 
 # Examples
-python -m traffic_sim_module.pipelines.main_pipeline configs/v4_morning_rush.yaml
-python -m traffic_sim_module.pipelines.main_pipeline configs/v4_evening_rush.yaml
-python -m traffic_sim_module.pipelines.main_pipeline configs/v4_full_day.yaml
+python -m traffic_sim_module.pipeline.main_pipeline configs/v4_morning_rush.yaml
+python -m traffic_sim_module.pipeline.main_pipeline configs/v4_evening_rush.yaml
+python -m traffic_sim_module.pipeline.main_pipeline configs/v4_full_day.yaml
 ```
 
 ### Using Individual Scripts
@@ -95,8 +95,8 @@ from traffic_sim_module.processing.interpolation import interpolate_1s, interpol
 from traffic_sim_module.processing.transforms import time_to_timestamp
 
 # Pipeline functions
-from traffic_sim_module.pipelines.xml_to_parquet import xml_to_parquet_filtered
-from traffic_sim_module.pipelines.parquet_to_export import parquet_to_geojson
+from traffic_sim_module.pipeline.xml_to_parquet import xml_to_parquet_filtered
+from traffic_sim_module.pipeline.parquet_to_animation import parquet_to_geojson
 
 # Configuration
 from traffic_sim_module.config import PipelineConfig
@@ -110,7 +110,7 @@ from traffic_sim_module.config import PipelineConfig
 ls data/raw/v4/events.xml data/raw/v4/network.gpkg
 
 # 2. Run pipeline
-python -m traffic_sim_module.pipelines.main_pipeline configs/v4_morning_rush.yaml
+python -m traffic_sim_module.pipeline.main_pipeline configs/v4_morning_rush.yaml
 
 # 3. Output is in data/processed/
 ls -lh data/processed/v4_morning_rush_trajectories.geojson
@@ -124,7 +124,7 @@ cp configs/v4_morning_rush.yaml configs/my_custom.yaml
 # 2. Edit my_custom.yaml to change time intervals
 
 # 3. Run pipeline
-python -m traffic_sim_module.pipelines.main_pipeline configs/my_custom.yaml
+python -m traffic_sim_module.pipeline.main_pipeline configs/my_custom.yaml
 ```
 
 ### Workflow 3: Post-Process Existing GeoJSON
