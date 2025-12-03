@@ -4,9 +4,11 @@ Network cache utilities for fast loading of road network data.
 Converts GeoPackage to Parquet format for 10-50x faster loading.
 """
 from pathlib import Path
-import pandas as pd
+
 import geopandas as gpd
+import pandas as pd
 from shapely import wkb
+
 from ..config import logger
 
 

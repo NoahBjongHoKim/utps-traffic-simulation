@@ -26,24 +26,14 @@ Features
 * **Pipeline Integration**: Streamlined data processing pipeline
 * **GUI Interface**: Streamlit-based graphical interface for easy interaction
 
-Getting Started
----------------
+Documentation
+-------------
 
 .. toctree::
    :maxdepth: 2
    :caption: User Guide
 
-   installation
-   quickstart
-   usage
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Reference Documentation
-
-   reference/docker
-   reference/caching
-   reference/quick
+   userguide
 
 .. toctree::
    :maxdepth: 2

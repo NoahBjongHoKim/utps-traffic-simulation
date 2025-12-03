@@ -1,10 +1,28 @@
-"""
-Configuration module for traffic simulation pipeline.
+"""Configuration module for traffic simulation pipeline.
 
-This module sets up global configuration including logging with loguru.
+This module provides global configuration settings and automatic logging setup
+using loguru. It configures both console and file logging with automatic rotation
+and tqdm progress bar integration.
+
+Module Attributes:
+    PROJECT_ROOT (Path): Root directory of the project
+    LOGS_DIR (Path): Directory for log files
+    DATA_DIR (Path): Directory for data files
+    logger: Configured loguru logger instance
+
+The logger is automatically configured when this module is imported with:
+    - Console output with colored formatting and tqdm support
+    - Daily rotating file logs with 30-day retention
+    - Detailed formatting including timestamps, levels, and source locations
+
+Example:
+    >>> from traffic_sim_module.config import logger, DATA_DIR
+    >>> logger.info("Processing data...")
+    >>> data_path = DATA_DIR / "input.xml"
 """
 
 from pathlib import Path
+
 from loguru import logger
 
 # Project paths

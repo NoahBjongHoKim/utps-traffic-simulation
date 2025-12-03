@@ -1,41 +1,72 @@
-"""
-Main Pipeline Coordinator
+"""Main pipeline coordinator for traffic simulation data processing.
+
+This module orchestrates the complete traffic simulation data processing pipeline
+from raw XML events to visualization-ready outputs. It provides a configuration-driven
+workflow with Pydantic validation and comprehensive logging.
+
+Pipeline Stages:
+    1. XML to Parquet: Convert and filter raw XML events to Parquet format
+       - Time-based filtering with configurable snapshots
+       - Spatial filtering using road network
+       - Parallel processing for performance
+
+    2. Parquet to Export: Generate interpolated trajectories or heatmaps
+       - Linear interpolation along road segments
+       - Multiple output formats (GeoJSON, CSV, Parquet, GeoParquet)
+       - Optional heatmap generation with vehicle counts
+
+    3. Heatmap Export (optional): Generate time-series heatmap data
+       - Regular time interval sampling
+       - Aggregated vehicle counts per link
+       - Suitable for animated heatmap visualization
+
+Configuration:
+    All pipeline parameters are specified via YAML configuration files with
+    Pydantic validation for type safety and error checking. See PipelineConfig
+    class for full configuration schema.
+
 Author: Noah Kim
 Date: 2025
 
-Coordinates the complete pipeline:
-1. XML -> Parquet (with time/spatial filtering)
-2. Parquet -> export (with interpolation)
+Example:
+    Run pipeline with configuration file:
+        $ python -m traffic_sim_module.pipeline.main_pipeline config.yaml
 
-Configuration via YAML file with Pydantic validation.
+    Generate JSON schema for IDE autocomplete:
+        $ python generate_config_schema.py > config_schema.json
 
-
-Run pipeline with config file:
-python main_pipeline.py config.yaml
-
-Generate JSON schema for IDE support:
-python generate_config_schema.py > config_schema.json
-
+Note:
+    The pipeline supports skipping stages if intermediate outputs already exist,
+    allowing for iterative development and testing.
 """
 
 import multiprocessing as mp
 from pathlib import Path
 import time
-import yaml
-from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional
 
-from .xml_to_parquet import xml_to_parquet_filtered
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+import yaml
+
+from ..config import logger
+from ..utils.network_cache import build_link_attributes_dict, load_network_cached
 from .parquet_to_animation import parquet_to_export
 from .parquet_to_heatmap import parquet_to_heatmap
-from ..config import logger
-from ..utils.network_cache import load_network_cached, build_link_attributes_dict
-
-
+from .xml_to_parquet import xml_to_parquet_filtered
 
 
 class PathConfig(BaseModel):
-    """File paths configuration."""
+    """File paths configuration for pipeline inputs and outputs.
+
+    Defines all file paths used by the pipeline with automatic validation
+    to ensure input files exist and output directories are writable.
+
+    Attributes:
+        xml_input: Path to input XML file containing simulation events
+        gpkg_network: Path to GeoPackage file with road network geometry
+        parquet_intermediate: Path for intermediate filtered Parquet file
+        output_base: Base path for output files (without file extension)
+    """
     model_config = ConfigDict(str_strip_whitespace=True)
 
     xml_input: Path = Field(..., description="Input XML file with events")
@@ -46,7 +77,17 @@ class PathConfig(BaseModel):
     @field_validator('xml_input', 'gpkg_network')
     @classmethod
     def validate_input_exists(cls, v: Path) -> Path:
-        """Check that input files exist."""
+        """Check that input files exist before pipeline starts.
+
+        Args:
+            v: Path to validate
+
+        Returns:
+            Validated Path object
+
+        Raises:
+            ValueError: If input file does not exist
+        """
         if not v.exists():
             raise ValueError(f"Input file does not exist: {v}")
         return v
@@ -61,7 +102,22 @@ class PathConfig(BaseModel):
 
 
 class FilterConfig(BaseModel):
-    """Filtering parameters configuration."""
+    """Time-based filtering configuration for snapshot generation.
+
+    Defines the temporal filtering strategy by specifying snapshot parameters.
+    Snapshots are regular time windows that sample the simulation state.
+
+    Attributes:
+        start_time: Start time for snapshot period in 24-hour format (hh:mm)
+        end_time: End time for snapshot period in 24-hour format (hh:mm)
+        frequency_seconds: Time between snapshot starts (in seconds)
+        duration_seconds: Duration of each snapshot window (in seconds)
+
+    Example:
+        For start_time="08:00", end_time="09:00", frequency_seconds=300,
+        duration_seconds=60, this generates snapshots every 5 minutes,
+        each capturing 60 seconds of simulation time.
+    """
     start_time: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="Start time for snapshots (hh:mm)")
     end_time: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="End time for snapshots (hh:mm)")
     frequency_seconds: int = Field(..., ge=1, description="Frequency between snapshots (seconds)")
@@ -78,7 +134,19 @@ class FilterConfig(BaseModel):
 
 
 class ProcessingConfig(BaseModel):
-    """Processing parameters configuration."""
+    """Processing and output configuration for pipeline execution.
+
+    Controls parallelization, output formats, and optional heatmap generation.
+
+    Attributes:
+        num_workers: Number of parallel worker processes (defaults to CPU count)
+        chunk_size: Number of events to process per chunk (default: 100000)
+        output_formats: List of output formats for trajectory data
+        heatmap_enabled: Whether to generate heatmap outputs (default: False)
+        heatmap_time_interval: Sampling interval for heatmap in seconds (default: 300)
+        heatmap_output_formats: List of output formats for heatmap data
+        heatmap_output_base: Base path for heatmap output files
+    """
     num_workers: Optional[int] = Field(None, ge=1, description="Number of worker processes")
     chunk_size: int = Field(100000, ge=1000, description="Chunk size for processing")
     output_formats: list[str] = Field(
@@ -120,7 +188,19 @@ class PipelineConfig(BaseModel):
 
 
 def load_config(config_path: str) -> PipelineConfig:
-    """Load and validate configuration from YAML file."""
+    """Load and validate pipeline configuration from YAML file.
+
+    Args:
+        config_path: Path to YAML configuration file
+
+    Returns:
+        Validated PipelineConfig object
+
+    Raises:
+        FileNotFoundError: If config file doesn't exist
+        yaml.YAMLError: If YAML syntax is invalid
+        pydantic.ValidationError: If configuration values are invalid
+    """
     with open(config_path, 'r') as f:
         config_dict = yaml.safe_load(f)
 
@@ -129,22 +209,30 @@ def load_config(config_path: str) -> PipelineConfig:
 
 def generate_snapshot_intervals(start_time: str, end_time: str,
                                 frequency_seconds: int, duration_seconds: int) -> list[tuple[int, int]]:
-    """
-    Generate list of (start, end) time intervals in seconds from snapshot config.
+    """Generate list of snapshot time intervals from configuration parameters.
+
+    Creates a series of non-overlapping or overlapping time windows (snapshots)
+    based on the specified frequency and duration. Each snapshot defines a
+    temporal filter window for event extraction.
 
     Args:
-        start_time: Start time as "hh:mm"
-        end_time: End time as "hh:mm"
-        frequency_seconds: Seconds between snapshots
-        duration_seconds: Duration of each snapshot
+        start_time: Start time of snapshot period in "hh:mm" format
+        end_time: End time of snapshot period in "hh:mm" format
+        frequency_seconds: Time between snapshot start times (seconds)
+        duration_seconds: Duration of each snapshot window (seconds)
 
     Returns:
-        List of (start_seconds, end_seconds) tuples
+        List of (start_seconds, end_seconds) tuples representing each snapshot,
+        where times are seconds since midnight
 
     Example:
-        generate_snapshot_intervals("12:00", "12:15", 300, 5)
-        # Returns: [(43200, 43205), (43500, 43505), (43800, 43805)]
-        # That's 12:00:00-12:00:05, 12:05:00-12:05:05, 12:10:00-12:10:05
+        >>> generate_snapshot_intervals("12:00", "12:15", 300, 5)
+        [(43200, 43205), (43500, 43505), (43800, 43805)]
+        # Three 5-second snapshots at 12:00, 12:05, and 12:10
+
+    Note:
+        Snapshots are only created if they fit completely within the time range.
+        The last snapshot must end before or at the end_time.
     """
     # Convert times to seconds
     h_start, m_start = map(int, start_time.split(':'))
@@ -166,7 +254,18 @@ def generate_snapshot_intervals(start_time: str, end_time: str,
 
 
 def print_config_summary(config: PipelineConfig):
-    """Print configuration summary."""
+    """Print comprehensive pipeline configuration summary to logs.
+
+    Outputs a formatted summary of all pipeline parameters including file
+    paths, filter settings, processing options, and enabled features.
+
+    Args:
+        config: Validated pipeline configuration object
+
+    Note:
+        Uses logger.info for output, ensuring consistent formatting with
+        the rest of the pipeline logs.
+    """
     logger.info("="*80)
     logger.info("PIPELINE CONFIGURATION")
     logger.info("="*80)
@@ -190,7 +289,7 @@ def print_config_summary(config: PipelineConfig):
     logger.info(f"  Output formats:       {', '.join(config.processing.output_formats)}")
 
     logger.info("Filters:")
-    logger.info(f"  Snapshot mode:")
+    logger.info("  Snapshot mode:")
     logger.info(f"    Period: {config.filters.start_time} - {config.filters.end_time}")
     logger.info(f"    Frequency: every {config.filters.frequency_seconds}s")
     logger.info(f"    Duration: {config.filters.duration_seconds}s per snapshot")
@@ -210,7 +309,7 @@ def print_config_summary(config: PipelineConfig):
 
     if config.processing.heatmap_enabled:
         logger.info("Heatmap Export:")
-        logger.info(f"  Enabled:           True")
+        logger.info("  Enabled:           True")
         logger.info(f"  Time interval:     {config.processing.heatmap_time_interval}s")
         logger.info(f"  Output base:       {config.processing.heatmap_output_base}")
         logger.info(f"  Output formats:    {', '.join(config.processing.heatmap_output_formats)}")
@@ -222,7 +321,35 @@ def print_config_summary(config: PipelineConfig):
 
 
 def main(config_path: str):
-    """Run the complete pipeline."""
+    """Execute the complete traffic simulation data processing pipeline.
+
+    Main entry point that orchestrates all pipeline stages from configuration
+    loading through final output generation. Handles error recovery and provides
+    comprehensive logging throughout execution.
+
+    Pipeline Execution Flow:
+        1. Load and validate YAML configuration
+        2. Load road network with caching
+        3. Stage 1: Convert XML events to filtered Parquet (if not skipped)
+        4. Stage 2: Generate interpolated trajectories/animations (if not skipped)
+        5. Stage 3: Generate heatmap data (if enabled)
+
+    Args:
+        config_path: Path to YAML configuration file
+
+    Returns:
+        Integer exit code (0 for success, 1 for failure)
+
+    Example:
+        >>> exit_code = main("configs/production.yaml")
+        >>> if exit_code == 0:
+        ...     print("Pipeline completed successfully")
+
+    Note:
+        Each stage can be skipped independently via configuration flags,
+        allowing for iterative development and partial pipeline execution.
+        All exceptions are caught, logged, and converted to exit codes.
+    """
     logger.info(f"Starting pipeline with config: {config_path}")
 
     # Load and validate configuration

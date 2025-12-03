@@ -1,35 +1,55 @@
-"""
-Parquet to GeoJSON Converter with Interpolation
-Author: Noah Kim & Joe Beck
+"""Parquet to GeoJSON converter with trajectory interpolation.
+
+This module converts filtered Parquet event files into animated GeoJSON format
+suitable for visualization. It performs sophisticated trajectory interpolation
+along road network geometries with proper handling of network topology.
+
+Key Features:
+    - Linear interpolation along road segments with 1-second resolution
+    - Automatic travel endpoint detection considering neighboring links
+    - Speed and bearing calculations for each trajectory point
+    - Support for both LineString and MultiLineString geometries
+    - Parallel processing for large datasets
+    - Network caching for improved performance
+
+The interpolation considers network topology to ensure smooth transitions
+between links by determining actual travel start/end points based on
+neighboring link connections.
+
+Authors: Noah Kim & Joe Beck
 Date: 14.11.2025
 
-Reads filtered Parquet events and creates GeoJSON with:
-- Coordinate interpolation along road segments
-- Speed and bearing calculations
-- Temporal attributes
+Example:
+    >>> from traffic_sim_module.pipeline.parquet_to_animation import parquet_to_geojson_animated
+    >>> parquet_to_geojson_animated(
+    ...     parquet_path="filtered.parquet",
+    ...     gpkg_path="network.gpkg",
+    ...     output_path="animation.geojson",
+    ...     num_workers=8
+    ... )
 """
 
-import pandas as pd
-import pyarrow.parquet as pq
-import pyarrow as pa
+import csv as csv_module
+from datetime import datetime, timedelta
 import json
 import math
 import multiprocessing as mp
-from datetime import datetime, timedelta
 from pathlib import Path
-import csv as csv_module
+
 import geopandas as gpd
+import pandas as pd
+import pyarrow.parquet as pq
 from shapely.geometry import Point
-from shapely import wkb
 
 # Handle both module import and direct script execution
 try:
     from ..config import logger
-    from ..utils.network_cache import load_network_cached, build_link_attributes_dict
+    from ..utils.network_cache import build_link_attributes_dict, load_network_cached
 except ImportError:
     # Running as standalone script - setup minimal logging
-    import sys
     from pathlib import Path
+    import sys
+
     from loguru import logger
 
     # Configure logger for standalone execution
@@ -38,33 +58,72 @@ except ImportError:
     # Import from absolute path
     repo_root = Path(__file__).parent.parent.parent
     sys.path.insert(0, str(repo_root))
-    from traffic_sim_module.utils.network_cache import load_network_cached, build_link_attributes_dict
+    from traffic_sim_module.utils.network_cache import (
+        build_link_attributes_dict,
+        load_network_cached,
+    )
 
 
 def load_network_with_cache(gpkg_path):
-    """
-    Load road network with automatic Parquet caching.
+    """Load road network with automatic Parquet caching for faster subsequent loads.
 
-    First run: Converts GeoPackage to Parquet cache (slow)
-    Subsequent runs: Loads from Parquet cache (10-50x faster!)
+    Uses intelligent caching to dramatically improve loading performance. On first
+    run, converts GeoPackage to Parquet format. Subsequent runs load from the
+    cache, providing 10-50x speedup.
 
     Args:
-        gpkg_path: Path to the GeoPackage file
+        gpkg_path: Path to the GeoPackage file containing road network
 
     Returns:
-        DataFrame with network data
+        DataFrame with network data including geometry and link attributes
+
+    Note:
+        Cache is automatically invalidated if source GeoPackage is modified.
+        Cache files are stored in data/interim/ directory.
+
+    Example:
+        >>> network_df = load_network_with_cache("data/raw/network.gpkg")
+        >>> print(f"Loaded {len(network_df)} road links")
     """
     return load_network_cached(gpkg_path)
 
 
 def time_to_timestamp(seconds):
-    """Convert seconds to timestamp string."""
+    """Convert seconds since midnight to formatted timestamp string.
+
+    Args:
+        seconds: Seconds since midnight (e.g., 28800 for 8:00 AM)
+
+    Returns:
+        Formatted timestamp string in 'YYYY/MM/DD HH:MM:SS' format
+
+    Example:
+        >>> time_to_timestamp(28800)
+        '2024/01/01 08:00:00'
+        >>> time_to_timestamp(64800)
+        '2024/01/01 18:00:00'
+    """
     base = datetime(2024, 1, 1)
     return (base + timedelta(seconds=int(seconds))).strftime('%Y/%m/%d %H:%M:%S')
 
 
 def calculate_bearing(start_coords, end_coords):
-    """Calculate bearing from start to end coordinates."""
+    """Calculate geographic bearing from start to end coordinates.
+
+    Uses the haversine formula to calculate the initial bearing (forward azimuth)
+    from start point to end point on a sphere.
+
+    Args:
+        start_coords: Tuple of (latitude, longitude) for start point in degrees
+        end_coords: Tuple of (latitude, longitude) for end point in degrees
+
+    Returns:
+        Bearing in degrees (0-360), where 0/360 is north, 90 is east, etc.
+
+    Example:
+        >>> calculate_bearing((40.7128, -74.0060), (51.5074, -0.1278))
+        51  # Northeast direction from NYC to London
+    """
     lat1, lon1 = map(math.radians, start_coords)
     lat2, lon2 = map(math.radians, end_coords)
     
@@ -81,7 +140,24 @@ def calculate_bearing(start_coords, end_coords):
 
 
 def get_neighboring_links(from_node, to_node, link_attrs):
-    """Find previous and next links based on node connections."""
+    """Find previous and next links in the network based on node connections.
+
+    Searches the network to find links that connect to the current link's
+    from_node (previous link) and to_node (next link), excluding U-turns.
+
+    Args:
+        from_node: ID of the current link's starting node
+        to_node: ID of the current link's ending node
+        link_attrs: Dictionary mapping link_id to link attributes
+
+    Returns:
+        Tuple of (previous_link_id, next_link_id), where either can be None
+        if no suitable connecting link is found
+
+    Note:
+        Excludes links that would create U-turns (previous.from == to_node,
+        or next.to == from_node)
+    """
     previous = None
     next_link = None
 
@@ -98,7 +174,23 @@ def get_neighboring_links(from_node, to_node, link_attrs):
 
 
 def get_edge_coords(link_id, link_attrs, fallback):
-    """Get edge coordinates of a link (handles both LineString and MultiLineString)."""
+    """Extract edge coordinates from a link's geometry.
+
+    Handles both LineString and MultiLineString geometries by extracting
+    the first and last coordinates.
+
+    Args:
+        link_id: ID of the link to get coordinates from
+        link_attrs: Dictionary mapping link_id to link attributes
+        fallback: Fallback coordinates to return if link not found or error occurs
+
+    Returns:
+        Tuple of (start_coords, end_coords) where each is a (x, y) tuple
+
+    Note:
+        For MultiLineString, uses first coordinate of first segment and
+        last coordinate of last segment.
+    """
     if link_id is not None and link_id in link_attrs:
         geom = link_attrs[link_id].get('geometry')
         if geom is not None:
@@ -113,7 +205,26 @@ def get_edge_coords(link_id, link_attrs, fallback):
 
 
 def get_travel_endpoints(link_id, link_attrs):
-    """Determine actual travel start and end points considering neighboring links."""
+    """Determine actual travel start and end points considering network topology.
+
+    Analyzes neighboring links to determine the true travel direction and endpoints
+    on a link. This ensures smooth trajectory interpolation by aligning coordinates
+    with the actual direction of travel based on network connectivity.
+
+    Args:
+        link_id: ID of the link to analyze
+        link_attrs: Dictionary mapping link_id to link attributes including geometry
+
+    Returns:
+        Tuple of (travel_start, travel_end) where each is a (x, y) coordinate tuple
+
+    Raises:
+        ValueError: If link has unsupported geometry type
+
+    Note:
+        This function is crucial for correct interpolation as it ensures vehicles
+        travel in the correct direction along each link based on network topology.
+    """
     attrs = link_attrs[link_id]
     from_node = attrs.get('from')
     to_node = attrs.get('to')
@@ -159,7 +270,32 @@ def get_travel_endpoints(link_id, link_attrs):
 def interpolate_trajectory(link_id, time_enter, time_leave,
                           start_coords, end_coords, person_id,
                           freespeed, link_length, bearing, interval_id):
-    """Interpolate points along trajectory with 1-second resolution."""
+    """Interpolate trajectory points along a link with 1-second time resolution.
+
+    Performs linear interpolation between start and end coordinates to create
+    a smooth animated trajectory. Generates one point per second with associated
+    temporal and spatial attributes.
+
+    Args:
+        link_id: ID of the link being traversed
+        time_enter: Entry time in seconds since midnight
+        time_leave: Exit time in seconds since midnight
+        start_coords: Starting (x, y) coordinates
+        end_coords: Ending (x, y) coordinates
+        person_id: ID of the person/vehicle
+        freespeed: Free flow speed on the link (m/s)
+        link_length: Length of the link (meters)
+        bearing: Travel bearing in degrees (0-360)
+        interval_id: Time interval identifier
+
+    Returns:
+        List of GeoJSON feature dictionaries, one per second of travel,
+        or empty list if time_delta <= 0
+
+    Note:
+        Coordinates are rounded to 12 decimal places for precision without
+        excessive file size.
+    """
     time_delta = time_leave - time_enter
 
     if time_delta <= 0:
@@ -189,7 +325,29 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
 
 
 def process_parquet_chunk(args):
-    """Process a chunk of Parquet data and create GeoJSON features."""
+    """Process a chunk of trajectory data and generate interpolated GeoJSON features.
+
+    Main processing function that takes a chunk of event data and produces
+    interpolated trajectory points for animation. Handles link lookups, coordinate
+    calculation, and feature generation.
+
+    Args:
+        args: Tuple of (chunk_df, link_attrs) where:
+            - chunk_df (DataFrame): Chunk of event data with columns
+              person, link_id, time_enter, time_leave, interval_id
+            - link_attrs (dict): Pre-built dictionary of link attributes
+
+    Returns:
+        Tuple of (features_list, links_not_found_set, processed_count) where:
+            - features_list: List of GeoJSON feature dictionaries
+            - links_not_found_set: Set of link IDs that weren't in the network
+            - processed_count: Number of events successfully processed
+
+    Note:
+        Links not found in the network are tracked and reported but don't
+        cause processing to fail. This handles cases where events reference
+        links outside the loaded network boundaries.
+    """
     chunk_df, link_attrs = args
 
     all_features = []
@@ -276,7 +434,7 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
     for fmt in output_formats:
         output_paths[fmt] = f"{output_base}.{fmt}"
 
-    logger.info(f"Output files:")
+    logger.info("Output files:")
     for fmt, path in output_paths.items():
         logger.info(f"  {fmt}: {path}")
 

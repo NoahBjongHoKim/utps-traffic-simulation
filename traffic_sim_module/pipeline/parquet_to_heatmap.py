@@ -1,38 +1,58 @@
-"""
-Parquet to Heatmap Converter
-Author: Noah Kim & Claude
+"""Parquet to heatmap converter for traffic density visualization.
+
+This module generates time-series heatmap data from filtered Parquet event files
+by sampling vehicle counts at regular time intervals. The output shows traffic
+density on each road link over time, suitable for animated heatmap visualization.
+
+Key Features:
+    - Regular time interval sampling (configurable resolution)
+    - Aggregation of vehicle counts per road link
+    - Multiple export formats (GeoJSON, CSV, Parquet, GeoParquet)
+    - Parallel processing of time points for performance
+    - Precomputed link center coordinates for fast lookups
+    - Vectorized pandas operations for efficiency
+
+The heatmap generation process:
+    1. Loads filtered trajectory events from Parquet
+    2. Samples vehicle presence at regular time intervals
+    3. Counts active vehicles on each link at each timepoint
+    4. Outputs time-stamped vehicle counts with coordinates
+
+Authors: Noah Kim & Claude
 Date: 20.11.2025
 
-Creates heatmap data from filtered Parquet events:
-- Samples vehicle counts at regular time intervals
-- Aggregates counts per road link
-- Exports to multiple formats (GeoJSON, CSV, Parquet, GeoParquet)
-
-Optimizations:
-- Parallel processing of timepoints
-- Precomputed link center coordinates
-- Vectorized pandas operations
+Example:
+    >>> from traffic_sim_module.pipeline.parquet_to_heatmap import parquet_to_heatmap
+    >>> parquet_to_heatmap(
+    ...     parquet_input="filtered.parquet",
+    ...     gpkg_network="network.gpkg",
+    ...     output_base="heatmap",
+    ...     time_interval_seconds=60,  # 1-minute resolution
+    ...     num_workers=8
+    ... )
 """
 
-import pandas as pd
-import json
-import numpy as np
-from datetime import datetime, timedelta
-from pathlib import Path
 import csv as csv_module
-import geopandas as gpd
-from shapely.geometry import Point
-import multiprocessing as mp
+from datetime import datetime, timedelta
 from functools import partial
+import json
+import multiprocessing as mp
+from pathlib import Path
+
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+from shapely.geometry import Point
 
 # Handle both module import and direct script execution
 try:
     from ..config import logger
-    from ..utils.network_cache import load_network_cached, build_link_attributes_dict
+    from ..utils.network_cache import build_link_attributes_dict, load_network_cached
 except ImportError:
     # Running as standalone script - setup minimal logging
-    import sys
     from pathlib import Path
+    import sys
+
     from loguru import logger
 
     # Configure logger for standalone execution
@@ -41,26 +61,54 @@ except ImportError:
     # Import from absolute path
     repo_root = Path(__file__).parent.parent.parent
     sys.path.insert(0, str(repo_root))
-    from traffic_sim_module.utils.network_cache import load_network_cached, build_link_attributes_dict
+    from traffic_sim_module.utils.network_cache import (
+        build_link_attributes_dict,
+        load_network_cached,
+    )
 
 
 def time_to_timestamp(seconds):
-    """Convert seconds to timestamp string."""
+    """Convert seconds since midnight to formatted timestamp string.
+
+    Args:
+        seconds: Seconds since midnight (e.g., 28800 for 8:00 AM)
+
+    Returns:
+        Formatted timestamp string in 'YYYY/MM/DD HH:MM:SS' format
+
+    Example:
+        >>> time_to_timestamp(28800)
+        '2024/01/01 08:00:00'
+        >>> time_to_timestamp(64800)
+        '2024/01/01 18:00:00'
+    """
     base = datetime(2024, 1, 1)
     return (base + timedelta(seconds=int(seconds))).strftime('%Y/%m/%d %H:%M:%S')
 
 
 def process_timepoint_batch(timepoints, df, link_attrs):
-    """
-    Process a batch of timepoints in parallel.
+    """Process a batch of time points to generate heatmap records.
+
+    For each timepoint in the batch, counts active vehicles on each link and
+    creates heatmap records with vehicle counts and geographic coordinates.
+    Uses vectorized pandas operations for efficient processing.
 
     Args:
-        timepoints: List of timepoints to process
-        df: DataFrame with columns: link_id, time_enter, time_leave
-        link_attrs: Dictionary of link attributes with precomputed centers
+        timepoints: List of integer timestamps (seconds since midnight) to sample
+        df: DataFrame with columns link_id, time_enter, time_leave, and interval_id
+        link_attrs: Dictionary mapping link_id to attributes including 'center' coords
 
     Returns:
-        List of heatmap records
+        List of heatmap record dictionaries with keys:
+            - timestamp: Formatted timestamp string
+            - lon: Longitude of link center
+            - lat: Latitude of link center
+            - vehicle_count: Number of active vehicles
+            - link_id: Link identifier
+
+    Note:
+        A vehicle is considered active on a link if time_enter <= timepoint < time_leave.
+        Links without center coordinates are skipped.
     """
     records = []
 
@@ -187,7 +235,7 @@ def parquet_to_heatmap(parquet_input, link_attrs, output_base,
     for fmt in output_formats:
         output_paths[fmt] = f"{output_base}.{fmt}"
 
-    logger.info(f"Output files:")
+    logger.info("Output files:")
     for fmt, path in output_paths.items():
         logger.info(f"  {fmt}: {path}")
 

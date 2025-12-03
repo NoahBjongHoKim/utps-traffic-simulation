@@ -93,5 +93,5 @@ Best Practices
 See Also
 --------
 
-* :doc:`../usage` - Usage patterns and examples
+* :doc:`../userguide` - Usage patterns and examples
 * :doc:`modules` - Main module reference

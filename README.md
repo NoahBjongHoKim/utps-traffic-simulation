@@ -1,6 +1,31 @@
-# UTPS Traffic Simulation - Quick Setup Guide
+# UTPS Traffic Simulation
 
-This guide is for setting up the UTPS Traffic Simulation application using Docker.
+Process and visualize traffic simulation data from MATSim simulations.
+
+## Documentation
+
+**Full Documentation**: Build and view the complete documentation with installation guides, usage examples, and API reference.
+
+```bash
+# Build documentation
+cd docs
+make html
+
+# View documentation
+open build/html/index.html  # macOS
+xdg-open build/html/index.html  # Linux
+start build/html/index.html  # Windows
+```
+
+The documentation includes:
+- **User Guide**: Installation, setup, and usage instructions for Docker and local deployment
+- **API Reference**: Complete API documentation for all modules
+
+---
+
+## Quick Setup Guide
+
+This is a quick setup guide for Docker deployment.
 
 ## Prerequisites
 
@@ -235,8 +260,7 @@ docker-compose exec traffic-sim bash
 ```
 
 **Full documentation:**
-- See DOCKER_SETUP.md (if included) for detailed Docker guide
-- See README.md for application documentation
+See the complete documentation by building the Sphinx docs (see Documentation section above).
 
 ---
 

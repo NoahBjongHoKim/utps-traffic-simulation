@@ -1,28 +1,60 @@
-"""
-XML to Parquet Converter with Time/Spatial Filtering
-Author: Noah Kim & Joe Beck
+"""XML to Parquet converter with time and spatial filtering.
+
+This module provides efficient conversion of large XML event files to Parquet format
+with simultaneous filtering by time intervals and spatial domains. Uses multiprocessing
+for parallel processing and streaming writes to handle files larger than available RAM.
+
+The converter supports:
+    - Multiple configurable time intervals for snapshot analysis
+    - Spatial filtering using road network from GeoPackage
+    - Automatic time clipping for events extending beyond interval boundaries
+    - Memory-efficient streaming XML parsing
+    - Parallel chunk processing with multiprocessing
+
+Authors: Noah Kim & Joe Beck
 Date: 14.11.2025
 
-Reads XML events file and creates filtered Parquet output.
-Filters by:
-- Time intervals (2 configurable intervals)
-- Spatial domain (using road network from GeoPackage)
+Example:
+    >>> from traffic_sim_module.pipeline.xml_to_parquet import xml_to_parquet_filtered
+    >>> time_intervals = [(28800, 32400), (61200, 64800)]  # 8-9am and 5-6pm
+    >>> xml_to_parquet_filtered(
+    ...     xml_input="events.xml",
+    ...     valid_links=None,
+    ...     parquet_output="filtered.parquet",
+    ...     time_intervals=time_intervals,
+    ...     num_workers=8,
+    ...     chunk_size=100000,
+    ...     gpkg_network="network.gpkg"
+    ... )
 """
 
-from lxml import etree
+from collections import defaultdict
 import multiprocessing as mp
+
 import geopandas as gpd
+from lxml import etree
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-from collections import defaultdict
-import sys
 
 from ..config import logger
 
 
 def load_valid_link_ids(gpkg_path, id_field='linkId'):
-    """Load GeoPackage and extract valid link IDs."""
+    """Load GeoPackage and extract valid link IDs for spatial filtering.
+
+    Args:
+        gpkg_path: Path to the GeoPackage file containing road network
+        id_field: Name of the column containing link IDs (default: 'linkId')
+
+    Returns:
+        Set of valid link IDs as strings
+
+    Example:
+        >>> valid_links = load_valid_link_ids("network.gpkg")
+        >>> len(valid_links)
+        45032
+    """
     logger.info("Loading road network GeoPackage...")
     gpkg = gpd.read_file(gpkg_path)
     logger.info(f"Road network loaded: {len(gpkg):,} links")
@@ -30,22 +62,68 @@ def load_valid_link_ids(gpkg_path, id_field='linkId'):
 
 
 def parse_time_interval(interval_str):
-    """Convert 'hh:mm,hh:mm' to tuple of (start, end)."""
+    """Convert time interval string to tuple.
+
+    Args:
+        interval_str: Time interval in format 'hh:mm,hh:mm'
+
+    Returns:
+        Tuple of (start_time, end_time) as strings
+
+    Example:
+        >>> parse_time_interval("08:00,09:00")
+        ('08:00', '09:00')
+    """
     return tuple(interval_str.split(","))
 
 
 def time_to_seconds(time_str):
-    """Convert 'hh:mm' to seconds."""
+    """Convert time string to seconds since midnight.
+
+    Args:
+        time_str: Time in format 'hh:mm'
+
+    Returns:
+        Integer seconds since midnight
+
+    Example:
+        >>> time_to_seconds("08:30")
+        30600
+        >>> time_to_seconds("14:15")
+        51300
+    """
     h, m = map(int, time_str.split(":"))
     return h * 3600 + m * 60
 
 
 def filter_events_chunk(args):
-    """Filter events in a chunk by time and spatial domain with LeaveLink time clipping.
+    """Filter events chunk by time and spatial domain with automatic time clipping.
 
-    For snapshot-based filtering, if EnterLink is within an interval but LeaveLink extends
-    beyond it, the LeaveLink time is clipped to the interval end. This ensures trajectories
-    stay within the snapshot window for proper interpolation.
+    Processes a chunk of XML events and filters them based on time intervals and
+    spatial domain (valid link IDs). For snapshot-based analysis, if an EnterLink
+    event falls within an interval but its corresponding LeaveLink extends beyond
+    the interval boundary, the LeaveLink time is automatically clipped to the
+    interval end. This ensures trajectories remain within the snapshot window for
+    proper interpolation.
+
+    Args:
+        args: Tuple of (valid_links, chunk, time_intervals) where:
+            - valid_links (set): Set of valid link IDs as strings
+            - chunk (list): List of event dictionaries from XML
+            - time_intervals (list): List of (start_seconds, end_seconds) tuples
+
+    Returns:
+        List of filtered event dictionaries with keys:
+            - person (str): Person/vehicle ID
+            - link_id (str): Link ID
+            - time_enter (int): Enter time in seconds
+            - time_leave (int): Leave time in seconds (possibly clipped)
+            - interval_id (int): Index of the time interval this event belongs to
+            - event_type (str): Always 'trip' for matched EnterLink/LeaveLink pairs
+
+    Note:
+        Unmatched EnterLink events are expected in snapshot mode and logged at
+        debug level. Only complete EnterLink/LeaveLink pairs are included in output.
     """
     valid_links, chunk, time_intervals = args
 
@@ -110,7 +188,23 @@ def filter_events_chunk(args):
 
 
 def parse_xml_to_chunks(xml_path, queue, chunk_size):
-    """Parse XML and send chunks to queue, ensuring EnterLink/LeaveLink pairing."""
+    """Parse XML event file and send chunks to processing queue.
+
+    Uses streaming XML parsing (iterparse) to handle large files efficiently without
+    loading the entire file into memory. Ensures proper EnterLink/LeaveLink pairing
+    by buffering pending EnterLink events until their matching LeaveLink is found.
+
+    Args:
+        xml_path: Path to the XML events file
+        queue: Multiprocessing queue to send event chunks
+        chunk_size: Number of events per chunk
+
+    Note:
+        - Sends None to queue when parsing is complete (sentinel value)
+        - Clears parsed elements from memory to prevent accumulation
+        - Logs progress every 10 chunks
+        - Warns about unmatched EnterLink events at end of file
+    """
     logger.info("Starting XML parsing...")
     context = etree.iterparse(xml_path, events=("start", "end"))
 
@@ -163,7 +257,25 @@ def parse_xml_to_chunks(xml_path, queue, chunk_size):
 
 
 def write_to_parquet(output_path, pool, queue, valid_links, time_intervals):
-    """Process chunks and write to Parquet file."""
+    """Process event chunks in parallel and write results to Parquet file.
+
+    Coordinates parallel filtering of event chunks using a multiprocessing pool,
+    then writes the filtered results to a Parquet file with streaming writes.
+    Uses PyArrow for efficient columnar storage.
+
+    Args:
+        output_path: Path for the output Parquet file
+        pool: Multiprocessing pool for parallel processing
+        queue: Queue containing event chunks to process
+        valid_links: Set of valid link IDs for spatial filtering
+        time_intervals: List of (start_seconds, end_seconds) tuples
+
+    Note:
+        - Schema is predefined with appropriate types for all columns
+        - Writes are streaming to handle large datasets
+        - Logs progress every 50 batches
+        - Ensures writer is properly closed even if errors occur
+    """
     logger.info("Filtering events and writing to Parquet...")
     logger.info(f"Using {len(time_intervals)} time intervals")
 
@@ -211,21 +323,41 @@ def write_to_parquet(output_path, pool, queue, valid_links, time_intervals):
 
 def xml_to_parquet_filtered(xml_input, valid_links, parquet_output,
                             time_intervals, num_workers, chunk_size, gpkg_network=None):
-    """Main function to convert XML to filtered Parquet.
+    """Convert XML events file to filtered Parquet format with parallel processing.
+
+    Main entry point for the XML to Parquet conversion pipeline. Orchestrates
+    multiprocessing-based parsing, filtering, and writing of event data. Supports
+    both time-based and spatial filtering with automatic time clipping for
+    snapshot-based analysis.
 
     Args:
-        xml_input: Path to XML events file
-        valid_links: Set of valid link IDs (strings) or None to load from gpkg_network
-        parquet_output: Path to output Parquet file
-        time_intervals: List of (start_seconds, end_seconds) tuples
-        num_workers: Number of worker processes
-        chunk_size: Chunk size for processing
-        gpkg_network: Path to GeoPackage (optional, for standalone use)
+        xml_input: Path to input XML events file
+        valid_links: Set of valid link IDs as strings, or None to load from gpkg_network
+        parquet_output: Path for output Parquet file
+        time_intervals: List of (start_seconds, end_seconds) tuples defining time windows
+        num_workers: Number of parallel worker processes for filtering
+        chunk_size: Number of events to process per chunk
+        gpkg_network: Optional path to GeoPackage for loading valid link IDs
+
+    Raises:
+        ValueError: If both valid_links and gpkg_network are None
 
     Note:
-        For snapshot-based filtering, LeaveLink times are automatically clipped to the
-        interval end if they extend beyond it. This ensures trajectories stay within
-        the snapshot window.
+        For snapshot-based filtering, LeaveLink times are automatically clipped to
+        the interval end if they extend beyond it. This ensures trajectories stay
+        within the snapshot window for proper interpolation.
+
+    Example:
+        >>> time_intervals = [(28800, 32400), (61200, 64800)]  # 8-9am, 5-6pm
+        >>> xml_to_parquet_filtered(
+        ...     xml_input="events.xml",
+        ...     valid_links=None,
+        ...     parquet_output="filtered.parquet",
+        ...     time_intervals=time_intervals,
+        ...     num_workers=8,
+        ...     chunk_size=100000,
+        ...     gpkg_network="network.gpkg"
+        ... )
     """
 
     # Load valid link IDs if not provided (for standalone use)
