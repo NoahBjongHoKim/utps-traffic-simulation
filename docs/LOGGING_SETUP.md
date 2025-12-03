@@ -83,41 +83,13 @@ python -m traffic_sim_module.pipeline.main_pipeline configs/v4_morning_rush.yaml
 2025-11-18 14:30:54 | INFO     | traffic_sim_module.pipelines.xml_to_parquet:load_valid_link_ids:26 | Loading road network GeoPackage...
 ```
 
-## Monitoring Logs
-
-### Watch Log in Real-Time
+## Watch Log in Real-Time
 ```bash
 # Follow the most recent log
 tail -f logs/pipeline_*.log
 
 # Filter to INFO and above (no DEBUG)
 tail -f logs/pipeline_*.log | grep -v "DEBUG"
-```
-
-### Search for Errors
-```bash
-# Find all errors
-grep "ERROR" logs/*.log
-
-# Find warnings
-grep "WARNING" logs/*.log
-```
-
-### Check Progress
-```bash
-# See how many events have been processed
-tail -f logs/pipeline_*.log | grep "Parsed"
-
-# See filtering progress
-tail -f logs/pipeline_*.log | grep "Filtered"
-```
-
-### View Specific Log
-```bash
-# View specific log file
-less logs/pipeline_v4_morning_rush_20251118_143052.log
-
-# Search within less: press '/' then type search term
 ```
 
 ## Using Logger in Custom Scripts
@@ -143,80 +115,3 @@ for i in range(total):
     # Process item
     log_progress(i, total, step_name="Processing items", interval=1000)
 ```
-
-## Log File Naming
-
-Log files are named automatically based on the config file:
-- Config: `configs/v4_morning_rush.yaml`
-- Log: `logs/pipeline_v4_morning_rush_YYYYMMDD_HHMMSS.log`
-
-Example:
-```
-logs/
-├── pipeline_v4_morning_rush_20251118_143052.log
-├── pipeline_v4_morning_rush_20251118_143052.log.zip  # Rotated
-├── pipeline_v4_evening_rush_20251118_150234.log
-└── pipeline_v4_full_day_20251118_163045.log
-```
-
-## Customization
-
-To change logging behavior, edit `traffic_sim_module/utils/logger.py`:
-
-```python
-# Change log directory
-setup_logger(log_dir="my_custom_logs")
-
-# Change rotation size
-logger.add(..., rotation="500 MB")  # Rotate at 500 MB
-
-# Change retention period
-logger.add(..., retention="60 days")  # Keep for 60 days
-
-# Change console log level
-logger.add(sys.stdout, level="DEBUG")  # Show DEBUG in console
-```
-
-## Troubleshooting
-
-### No log files created
-```bash
-# Check logs directory exists
-ls -ld logs/
-
-# Create if missing
-mkdir -p logs/
-```
-
-### Permission denied
-```bash
-# Fix permissions
-chmod 755 logs/
-```
-
-### Loguru not installed
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Or install just loguru
-pip install loguru
-```
-
-## Benefits
-
-1. **Track Progress**: Know exactly where the pipeline is and how much is left
-2. **Debug Issues**: Full tracebacks and detailed logging help identify problems
-3. **Performance Analysis**: Timing information for each stage
-4. **Audit Trail**: Complete record of what was processed and when
-5. **File Management**: Easy to find and manage log files by date/config
-
-## Next Steps
-
-The logging is already integrated! Just run your pipeline as normal:
-
-```bash
-python -m traffic_sim_module.pipeline.main_pipeline configs/v4_morning_rush.yaml
-```
-
-Check `logs/` directory for the log files.

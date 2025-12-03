@@ -89,6 +89,13 @@ instance/
 # MkDocs documentation
 docs/site/
 
+# Sphinx documentation
+docs/build/
+docs/_build/
+docs/source/_build/
+docs/source/_static/
+docs/source/_templates/
+
 # PyBuilder
 .pybuilder/
 target/
