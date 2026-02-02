@@ -1,0 +1,72 @@
+<Window x:Class="UTPS_Addin.ProgressDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Processing Traffic Data"
+        Height="220"
+        Width="500"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        WindowStyle="SingleBorderWindow"
+        ShowInTaskbar="False">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Current stage/message -->
+        <TextBlock Grid.Row="0"
+                   Text="{Binding StatusMessage}"
+                   FontSize="13"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,10"/>
+
+        <!-- Progress bar -->
+        <ProgressBar Grid.Row="1"
+                     Height="25"
+                     Minimum="0"
+                     Maximum="100"
+                     Value="{Binding ProgressPercent}"
+                     Margin="0,0,0,5"/>
+
+        <!-- Percentage text -->
+        <TextBlock Grid.Row="2"
+                   HorizontalAlignment="Center"
+                   FontSize="11"
+                   Foreground="#666"
+                   Margin="0,0,0,10">
+            <Run Text="{Binding ProgressPercent, StringFormat={}{0:0}%}"/>
+            <Run Text=" complete"/>
+        </TextBlock>
+
+        <!-- Detailed log (scrollable) -->
+        <Border Grid.Row="3"
+                BorderBrush="#CCC"
+                BorderThickness="1"
+                Background="#F9F9F9"
+                Margin="0,0,0,10">
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          MaxHeight="60">
+                <TextBlock Text="{Binding DetailedLog}"
+                           FontFamily="Consolas"
+                           FontSize="10"
+                           Foreground="#333"
+                           Padding="5"
+                           TextWrapping="Wrap"/>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Cancel button -->
+        <Button Grid.Row="4"
+                Content="Cancel"
+                Width="100"
+                Height="28"
+                HorizontalAlignment="Right"
+                Click="CancelButton_Click"
+                IsEnabled="{Binding CanCancel}"/>
+    </Grid>
+</Window>

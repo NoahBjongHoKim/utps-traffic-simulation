@@ -19,6 +19,18 @@ namespace UTPS_Addin
         {
             try
             {
+                // Validate Python environment first
+                if (!PythonRunner.ValidatePythonEnvironment(out string validationError))
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                        validationError,
+                        "Python Environment Error",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Error
+                    );
+                    return;
+                }
+
                 // Create and show the configuration dialog
                 var dialog = new TrafficConfigDialog
                 {
@@ -42,19 +54,8 @@ namespace UTPS_Addin
                         System.Diagnostics.Debug.WriteLine($"GPKG File: {viewModel.GpkgFilePath}");
                         System.Diagnostics.Debug.WriteLine($"Output Path: {viewModel.OutputPath}");
 
-                        // TODO: Phase 2 - Call Python processing script
-                        // For now, just show a confirmation message
-                        ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
-                            $"Configuration saved!\n\n" +
-                            $"XML: {viewModel.XmlFilePath}\n" +
-                            $"Time: {viewModel.StartTime} - {viewModel.EndTime}\n" +
-                            $"Network: {viewModel.GpkgFilePath}\n" +
-                            $"Output: {viewModel.OutputPath}\n\n" +
-                            $"Phase 2 will integrate Python processing here.",
-                            "Traffic Data Loader",
-                            System.Windows.MessageBoxButton.OK,
-                            System.Windows.MessageBoxImage.Information
-                        );
+                        // Start Python processing
+                        StartProcessing(viewModel);
                     }
                 }
                 else
@@ -75,6 +76,83 @@ namespace UTPS_Addin
 
                 // Log full exception for debugging
                 System.Diagnostics.Debug.WriteLine($"Error in TrafficLoaderButton: {ex}");
+            }
+        }
+
+        /// <summary>
+        /// Start Python processing with progress dialog.
+        /// </summary>
+        private void StartProcessing(TrafficConfigViewModel config)
+        {
+            try
+            {
+                // Create Python runner
+                var runner = new PythonRunner();
+
+                // Create and show progress dialog
+                var progressDialog = new ProgressDialog
+                {
+                    Owner = ArcGIS.Desktop.Framework.FrameworkApplication.Current.MainWindow
+                };
+
+                // Start the pipeline in a background task
+                Task.Run(() =>
+                {
+                    try
+                    {
+                        runner.RunPipeline(
+                            config.XmlFilePath,
+                            config.GpkgFilePath,
+                            config.StartTime,
+                            config.EndTime,
+                            config.OutputPath
+                        );
+
+                        // Wait for completion
+                        int exitCode = runner.WaitForExit();
+
+                        if (exitCode != 0)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Python process exited with code: {exitCode}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Error running Python pipeline: {ex}");
+
+                        // Show error on UI thread
+                        progressDialog.Dispatcher.Invoke(() =>
+                        {
+                            ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                                $"Error running Python pipeline:\n{ex.Message}",
+                                "Processing Error",
+                                System.Windows.MessageBoxButton.OK,
+                                System.Windows.MessageBoxImage.Error
+                            );
+                        });
+                    }
+                });
+
+                // Show progress dialog (blocks until processing completes or is cancelled)
+                progressDialog.StartProcessing(runner);
+                bool? dialogResult = progressDialog.ShowDialog();
+
+                // If processing succeeded, optionally load the result into ArcGIS Pro
+                if (dialogResult == true)
+                {
+                    System.Diagnostics.Debug.WriteLine("Processing completed successfully");
+                    // TODO: Phase 3 - Add result to map
+                }
+            }
+            catch (Exception ex)
+            {
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                    $"Error starting processing:\n{ex.Message}",
+                    "Error",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error
+                );
+                System.Diagnostics.Debug.WriteLine($"Error in StartProcessing: {ex}");
             }
         }
     }
