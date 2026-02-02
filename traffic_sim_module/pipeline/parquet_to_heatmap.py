@@ -105,6 +105,7 @@ def process_timepoint_batch(timepoints, df, link_attrs):
             - lat: Latitude of link center
             - vehicle_count: Number of active vehicles
             - link_id: Link identifier
+            - travelling_speed: Average speed of active vehicles (m/s)
 
     Note:
         A vehicle is considered active on a link if time_enter <= timepoint < time_leave.
@@ -112,21 +113,40 @@ def process_timepoint_batch(timepoints, df, link_attrs):
     """
     records = []
 
+    # Pre-calculate travelling speed for all vehicles (link_length / time_spent)
+    if 'travelling_speed' not in df.columns:
+        df = df.copy()
+        df['time_spent'] = df['time_leave'] - df['time_enter']
+        df['travelling_speed'] = 0.0
+
+        for idx, row in df.iterrows():
+            link_id = row['link_id']
+            time_spent = row['time_spent']
+
+            if link_id in link_attrs and time_spent > 0:
+                link_length = link_attrs[link_id].get('length', 0)
+                if link_length > 0:
+                    df.at[idx, 'travelling_speed'] = link_length / time_spent
+
     for timepoint in timepoints:
         # Vectorized filtering: count vehicles where time_enter <= timepoint < time_leave
         mask = (df['time_enter'] <= timepoint) & (df['time_leave'] > timepoint)
         active_vehicles = df[mask]
 
-        # Group by link_id and count
-        counts = active_vehicles.groupby('link_id', as_index=False).size()
-        counts.columns = ['link_id', 'vehicle_count']
+        # Group by link_id and calculate aggregates
+        grouped = active_vehicles.groupby('link_id', as_index=False).agg({
+            'link_id': 'size',  # Count vehicles
+            'travelling_speed': 'mean'  # Average speed
+        })
+        grouped.columns = ['link_id', 'vehicle_count', 'avg_speed']
 
         # Convert to records with coordinates
         timestamp = time_to_timestamp(timepoint)
 
-        for _, row in counts.iterrows():
+        for _, row in grouped.iterrows():
             link_id = row['link_id']
             vehicle_count = row['vehicle_count']
+            avg_speed = row['avg_speed']
 
             # Skip if link not in network
             if link_id not in link_attrs:
@@ -139,6 +159,10 @@ def process_timepoint_batch(timepoints, df, link_attrs):
 
             lon, lat = center
 
+            # Get freespeed from link attributes
+            freespeed = link_attrs[link_id].get('freespeed')
+            freespeed_rounded = round(float(freespeed), 3) if freespeed is not None else None
+
             # Create record
             record = {
                 'link_id': link_id,
@@ -146,7 +170,9 @@ def process_timepoint_batch(timepoints, df, link_attrs):
                 'y': lat,
                 'timestamp': timestamp,
                 'timepoint_seconds': int(timepoint),
-                'vehicle_count': int(vehicle_count)
+                'vehicle_count': int(vehicle_count),
+                'travelling_speed': round(float(avg_speed), 3),
+                'freespeed': freespeed_rounded
             }
             records.append(record)
 
@@ -254,7 +280,9 @@ def parquet_to_heatmap(parquet_input, link_attrs, output_base,
                     "link_id": rec['link_id'],
                     "timestamp": rec['timestamp'],
                     "timepoint_seconds": rec['timepoint_seconds'],
-                    "vehicle_count": rec['vehicle_count']
+                    "vehicle_count": rec['vehicle_count'],
+                    "travelling_speed": rec['travelling_speed'],
+                    "freespeed": rec['freespeed']
                 }
             }
             features.append(feature)
@@ -272,10 +300,10 @@ def parquet_to_heatmap(parquet_input, link_attrs, output_base,
         logger.info("Writing CSV...")
         with open(output_paths['csv'], 'w', newline='') as f:
             writer = csv_module.writer(f)
-            writer.writerow(['link_id', 'x', 'y', 'timestamp', 'timepoint_seconds', 'vehicle_count'])
+            writer.writerow(['link_id', 'x', 'y', 'timestamp', 'timepoint_seconds', 'vehicle_count', 'travelling_speed', 'freespeed'])
             for rec in heatmap_records:
                 writer.writerow([rec['link_id'], rec['x'], rec['y'], rec['timestamp'],
-                               rec['timepoint_seconds'], rec['vehicle_count']])
+                               rec['timepoint_seconds'], rec['vehicle_count'], rec['travelling_speed'], rec['freespeed']])
         logger.success(f"CSV created: {output_paths['csv']}")
 
     if 'parquet' in output_formats:

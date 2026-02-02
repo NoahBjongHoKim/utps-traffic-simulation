@@ -8,10 +8,9 @@ Installation
 
 **Requirements**
 
-* Python 3.12.0
-* Docker Desktop (for containerized deployment)
+* Python 3.12.0 or higher
 
-**Option 1: Local Installation**
+**Local Installation**
 
 .. code-block:: bash
 
@@ -20,17 +19,6 @@ Installation
    pip install -r requirements.txt
 
 The package installs in editable mode, making ``traffic_sim_module`` available system-wide.
-
-**Option 2: Docker Installation**
-
-.. code-block:: bash
-
-   # Build and start
-   docker-compose up --build
-
-   # Or pull from Docker Hub
-   docker-compose pull
-   docker-compose up
 
 Setup
 -----
@@ -55,28 +43,6 @@ Organize your data as follows:
 Running the Application
 -----------------------
 
-**Using the GUI (Recommended)**
-
-Local:
-
-.. code-block:: bash
-
-   streamlit run scripts/pipeline_gui.py
-
-Docker:
-
-.. code-block:: bash
-
-   docker-compose up
-
-Then open http://localhost:8501 in your browser.
-
-The GUI provides three modes:
-
-* **Create/Edit Config**: Build new configuration files
-* **Run Pipeline**: Execute existing configurations
-* **Manage Presets**: Browse available configurations
-
 **Using Python**
 
 .. code-block:: python
@@ -94,12 +60,7 @@ The GUI provides three modes:
 
 .. code-block:: bash
 
-   # Local
    python -m traffic_sim_module.pipeline.main_pipeline configs/your_config.yaml
-
-   # Docker
-   docker-compose run --rm traffic-sim \
-     python -m traffic_sim_module.pipeline.main_pipeline configs/your_config.yaml
 
 Pipeline Components
 -------------------
@@ -171,29 +132,6 @@ Enable caching for better performance:
    cache = NetworkCache(cache_dir="cache/")
    network_data = cache.get_or_load("network_id")
 
-Docker Commands
----------------
-
-.. code-block:: bash
-
-   # Start
-   docker-compose up
-
-   # Start in background
-   docker-compose up -d
-
-   # Stop
-   docker-compose down
-
-   # View logs
-   docker-compose logs -f
-
-   # Rebuild after changes
-   docker-compose up --build
-
-   # Update to latest
-   docker-compose pull && docker-compose up
-
 Troubleshooting
 ---------------
 
@@ -208,16 +146,3 @@ Process large XML files in chunks or use Parquet format.
 **Slow Performance**
 
 Enable network caching and use Parquet for intermediate data.
-
-**Port 8501 Already in Use**
-
-Change port in docker-compose.yml:
-
-.. code-block:: yaml
-
-   ports:
-     - "8502:8501"
-
-**Docker Daemon Not Running**
-
-Start Docker Desktop and wait for it to initialize.

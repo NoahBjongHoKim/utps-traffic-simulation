@@ -269,7 +269,8 @@ def get_travel_endpoints(link_id, link_attrs):
 
 def interpolate_trajectory(link_id, time_enter, time_leave,
                           start_coords, end_coords, person_id,
-                          freespeed, link_length, bearing, interval_id):
+                          freespeed, link_length, bearing, interval_id, travelling_speed,
+                          snapshot_mode=False):
     """Interpolate trajectory points along a link with 1-second time resolution.
 
     Performs linear interpolation between start and end coordinates to create
@@ -287,20 +288,69 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
         link_length: Length of the link (meters)
         bearing: Travel bearing in degrees (0-360)
         interval_id: Time interval identifier
+        travelling_speed: Actual travelling speed (m/s) = link_length / time_spent
+        snapshot_mode: If True, output only 1 point at time_enter (default: False)
 
     Returns:
-        List of GeoJSON feature dictionaries, one per second of travel,
-        or empty list if time_delta <= 0
+        List of GeoJSON feature dictionaries. In snapshot_mode, returns a single point
+        at the starting position. Otherwise returns one point per second of travel.
+        Returns empty list if time_delta < 0.
 
     Note:
         Coordinates are rounded to 12 decimal places for precision without
-        excessive file size.
+        excessive file size. In snapshot mode, travelling_speed is still calculated
+        from the full time_leave - time_enter, not forced to 0.
     """
     time_delta = time_leave - time_enter
 
-    if time_delta <= 0:
+    if time_delta < 0:
         return []
 
+    # Calculate relative velocity (s = travelling_speed / freespeed)
+    if freespeed is not None and freespeed > 0:
+        relative_velocity = travelling_speed / freespeed
+    else:
+        relative_velocity = None
+
+    # Snapshot mode: return single point at start position, but keep correct speed
+    if snapshot_mode:
+        feature = {
+            "geometry": {
+                "type": "Point",
+                "coordinates": [round(start_coords[0], 12), round(start_coords[1], 12)]
+            },
+            "properties": {
+                "timestamp": time_to_timestamp(time_enter),
+                "angle": bearing,
+                "person_id": person_id,
+                "interval_id": interval_id,
+                "travelling_speed": round(travelling_speed, 3),
+                "freespeed": round(freespeed, 3) if freespeed is not None else None,
+                "s": round(relative_velocity, 3) if relative_velocity is not None else None
+            }
+        }
+        return [feature]
+
+    # Handle time_delta = 0 in regular mode (shouldn't happen, but for safety)
+    if time_delta == 0:
+        feature = {
+            "geometry": {
+                "type": "Point",
+                "coordinates": [round(start_coords[0], 12), round(start_coords[1], 12)]
+            },
+            "properties": {
+                "timestamp": time_to_timestamp(time_enter),
+                "angle": bearing,
+                "person_id": person_id,
+                "interval_id": interval_id,
+                "travelling_speed": round(travelling_speed, 3),
+                "freespeed": round(freespeed, 3) if freespeed is not None else None,
+                "s": round(relative_velocity, 3) if relative_velocity is not None else None
+            }
+        }
+        return [feature]
+
+    # Regular interpolation for time_delta > 0
     features = []
     for t in range(time_delta + 1):
         fraction = t / time_delta
@@ -316,7 +366,10 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
                 "timestamp": time_to_timestamp(time_enter + t),
                 "angle": bearing,
                 "person_id": person_id,
-                "interval_id": interval_id
+                "interval_id": interval_id,
+                "travelling_speed": round(travelling_speed, 3),
+                "freespeed": round(freespeed, 3) if freespeed is not None else None,
+                "s": round(relative_velocity, 3) if relative_velocity is not None else None
             }
         }
         features.append(feature)
@@ -332,10 +385,11 @@ def process_parquet_chunk(args):
     calculation, and feature generation.
 
     Args:
-        args: Tuple of (chunk_df, link_attrs) where:
+        args: Tuple of (chunk_df, link_attrs, snapshot_mode) where:
             - chunk_df (DataFrame): Chunk of event data with columns
               person, link_id, time_enter, time_leave, interval_id
             - link_attrs (dict): Pre-built dictionary of link attributes
+            - snapshot_mode (bool): If True, output only 1 point per vehicle
 
     Returns:
         Tuple of (features_list, links_not_found_set, processed_count) where:
@@ -348,7 +402,7 @@ def process_parquet_chunk(args):
         cause processing to fail. This handles cases where events reference
         links outside the loaded network boundaries.
     """
-    chunk_df, link_attrs = args
+    chunk_df, link_attrs, snapshot_mode = args
 
     all_features = []
     links_not_found = set()
@@ -374,6 +428,14 @@ def process_parquet_chunk(args):
                 start_coords, end_coords = get_travel_endpoints(link_id, link_attrs)
                 bearing = calculate_bearing(start_coords, end_coords)
 
+            # Calculate travelling speed (link_length / time_spent)
+            time_spent = row['time_leave'] - row['time_enter']
+            link_length = attrs.get('length', 0)
+            if time_spent > 0 and link_length > 0:
+                travelling_speed = link_length / time_spent
+            else:
+                travelling_speed = 0.0
+
             features = interpolate_trajectory(
                 link_id,
                 row['time_enter'],
@@ -382,9 +444,11 @@ def process_parquet_chunk(args):
                 end_coords,
                 row['person'],
                 attrs.get('freespeed'),
-                attrs.get('length'),
+                link_length,
                 bearing,
-                row['interval_id']  # Pass interval_id through
+                row['interval_id'],  # Pass interval_id through
+                travelling_speed,
+                snapshot_mode=snapshot_mode
             )
 
             all_features.extend(features)
@@ -401,7 +465,7 @@ def process_parquet_chunk(args):
 
 def parquet_to_export(parquet_input, link_attrs, output_base,
                        output_formats, num_workers, chunk_size,
-                       gpkg_network=None):
+                       gpkg_network=None, snapshot_mode=False):
     """Main function to convert Parquet to multiple output formats with interpolation.
 
     Args:
@@ -412,7 +476,7 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
         num_workers: Number of worker processes
         chunk_size: Chunk size for processing
         gpkg_network: Path to GeoPackage (optional, for standalone use)
-        geojson_output: Legacy parameter for backward compatibility
+        snapshot_mode: If True, output only 1 point per vehicle at snapshot time
     """
 
     # Load network if not provided (for standalone use)
@@ -459,7 +523,7 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
         if 'csv' in output_formats:
             csv_file = open(output_paths['csv'], 'w', newline='')
             csv_writer = csv_module.writer(csv_file)
-            csv_writer.writerow(['x', 'y', 'timestamp', 'angle', 'person_id', 'interval_id'])  # Header
+            csv_writer.writerow(['x', 'y', 'timestamp', 'angle', 'person_id', 'interval_id', 'travelling_speed', 'freespeed', 's'])  # Header
             writers['csv'] = csv_file
             writers['csv_writer'] = csv_writer
 
@@ -470,11 +534,11 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
         processed = 0
         batches_processed = 0
 
-        # Create iterator of (df, link_attrs) tuples for all batches
+        # Create iterator of (df, link_attrs, snapshot_mode) tuples for all batches
         def batch_generator():
             for batch in parquet_file.iter_batches(batch_size=chunk_size):
                 df = batch.to_pandas()
-                yield (df, link_attrs)
+                yield (df, link_attrs, snapshot_mode)
 
         # Process batches in parallel using the pool
         for features in pool.imap_unordered(process_parquet_chunk, batch_generator()):
@@ -495,7 +559,7 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
                     writers['csv_writer'].writerow([
                         coords[0], coords[1],  # x, y
                         props['timestamp'], props['angle'], props['person_id'],
-                        props['interval_id']
+                        props['interval_id'], props['travelling_speed'], props['freespeed'], props['s']
                     ])
 
                 # Collect for Parquet/GeoParquet
@@ -506,7 +570,10 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
                         'timestamp': props['timestamp'],
                         'angle': props['angle'],
                         'person_id': props['person_id'],
-                        'interval_id': props['interval_id']
+                        'interval_id': props['interval_id'],
+                        'travelling_speed': props['travelling_speed'],
+                        'freespeed': props['freespeed'],
+                        's': props['s']
                     })
 
             processed += chunk_size  # Approximate (last batch may be smaller)

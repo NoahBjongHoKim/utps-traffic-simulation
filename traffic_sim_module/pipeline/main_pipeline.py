@@ -121,7 +121,7 @@ class FilterConfig(BaseModel):
     start_time: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="Start time for snapshots (hh:mm)")
     end_time: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="End time for snapshots (hh:mm)")
     frequency_seconds: int = Field(..., ge=1, description="Frequency between snapshots (seconds)")
-    duration_seconds: int = Field(..., ge=1, description="Duration of each snapshot (seconds)")
+    duration_seconds: int = Field(..., ge=0, description="Duration of each snapshot (seconds)")
 
     @field_validator('start_time', 'end_time')
     @classmethod
@@ -142,6 +142,7 @@ class ProcessingConfig(BaseModel):
         num_workers: Number of parallel worker processes (defaults to CPU count)
         chunk_size: Number of events to process per chunk (default: 100000)
         output_formats: List of output formats for trajectory data
+        snapshot_mode: If True, output only 1 point per vehicle at snapshot time (default: False)
         heatmap_enabled: Whether to generate heatmap outputs (default: False)
         heatmap_time_interval: Sampling interval for heatmap in seconds (default: 300)
         heatmap_output_formats: List of output formats for heatmap data
@@ -153,6 +154,7 @@ class ProcessingConfig(BaseModel):
         default=["geojson"],
         description="Output formats: geojson, csv, parquet, geoparquet"
     )
+    snapshot_mode: bool = Field(False, description="Output only 1 point per vehicle at snapshot time")
     heatmap_enabled: bool = Field(False, description="Enable heatmap export with vehicle counts")
     heatmap_time_interval: int = Field(300, ge=60, description="Time interval for heatmap sampling (seconds)")
     heatmap_output_formats: list[str] = Field(
@@ -437,7 +439,8 @@ def main(config_path: str):
                 output_base=str(config.paths.output_base),
                 output_formats=config.processing.output_formats,
                 num_workers=config.processing.num_workers,
-                chunk_size=config.processing.chunk_size
+                chunk_size=config.processing.chunk_size,
+                snapshot_mode=config.processing.snapshot_mode
             )
         except Exception as e:
             logger.error(f"Error in Step 2: {e}")

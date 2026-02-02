@@ -165,13 +165,14 @@ def filter_events_chunk(args):
             if matched_interval and link_id in valid_links:
                 interval_start, interval_end = matched_interval
 
-                # Clip LeaveLink time to interval end if it extends beyond
-                if time_leave > interval_end:
-                    time_leave = interval_end
-                    # Note: time_leave might now equal time_enter, which is fine
-                    # It just means the vehicle was at a point in the snapshot
+                # For snapshot mode (interval_start == interval_end), keep original time_leave
+                # For regular intervals, clip LeaveLink time to interval end if it extends beyond
+                is_snapshot_mode = (interval_start == interval_end)
 
-                # Store the filtered record with potentially clipped time_leave
+                if not is_snapshot_mode and time_leave > interval_end:
+                    time_leave = interval_end
+
+                # Store the filtered record with original or clipped time_leave
                 filtered_records.append({
                     'person': person,
                     'link_id': link_id,
