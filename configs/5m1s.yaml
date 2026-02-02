@@ -1,0 +1,23 @@
+paths:
+  xml_input: data/raw/events_v4.xml
+  gpkg_network: data/raw/road_network_v4_clipped_single.gpkg
+  parquet_intermediate: data/interim/filtered_events.parquet
+  output_base: data/processed/5m1s
+filters:
+  start_time: 00:00
+  end_time: '23:59'
+  frequency_seconds: 300
+  duration_seconds: 0
+processing:
+  num_workers: 8
+  chunk_size: 100000
+  output_formats:
+  - geojson
+  snapshot_mode: true
+  heatmap_enabled: false
+  heatmap_time_interval: 300
+  heatmap_output_formats:
+  - csv
+  heatmap_output_base: data/processed/heatmap
+skip_xml_to_parquet: true
+skip_parquet_to_geojson: false

@@ -1,0 +1,50 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ArcGIS defaultAssembly="UTPS_Addin.dll"
+        defaultNamespace="UTPS_Addin"
+        xmlns="http://schemas.esri.com/DADF/Registry"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://schemas.esri.com/DADF/Registry file:///C:/Program%20Files/ArcGIS/Pro/bin/ArcGIS.Desktop.Framework.xsd">
+
+  <AddInInfo id="{1f69aeb3-3d8a-4f86-a00d-bb7a5c61cb4c}" version="1.0" desktopVersion="3.6.59527" product="ArcGISPro">
+    <Name>UTPS_Addin</Name>   
+    <Description>UTPS_Addin description</Description>
+    <Image>Images\AddinDesktop32.png</Image>
+    <Author>noahb</Author>
+    <Company>Acme</Company>
+    <Date>1/8/2026 3:44:58 PM</Date>
+    <Subject>Framework</Subject>
+    <!-- Note subject can be one or more of these topics:
+                    Content, Framework, Editing, Geodatabase, Geometry, Geoprocessing, Layouts, Map Authoring, Map Exploration -->
+  </AddInInfo>
+
+  <modules>
+    <insertModule id="UTPS_Addin_Module" className="Module1" autoLoad="false" caption="Module1">
+      <!-- uncomment to have the control hosted on a separate tab-->
+      <tabs>
+        <!--<tab id="UTPS_Addin_Tab1" caption="New Tab">
+          <group refID="UTPS_Addin_Group1"/>
+        </tab>-->
+      </tabs>
+              
+      <groups>
+        <!-- comment this out if you have no controls on the Addin tab to avoid
+              an empty group-->
+        <group id="UTPS_Addin_Group1" caption="UTPS Tools" appearsOnAddInTab="true">
+          <!-- host controls within groups -->
+          <button refID="UTPS_Addin_TrafficLoader_Button" size="large"/>
+        </group>
+      </groups>
+      
+      <controls>
+        <!-- add your controls here -->
+        <button id="UTPS_Addin_TrafficLoader_Button" caption="Load Traffic Data" 
+                className="TrafficLoaderButton" loadOnClick="true" 
+                smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue16.png" 
+                largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue32.png">
+          <tooltip heading="Load GPKG">Load and Style AADT Data from Downloads.<disabledText /></tooltip>
+        </button>
+      </controls> 
+      
+    </insertModule>
+  </modules>
+</ArcGIS>
