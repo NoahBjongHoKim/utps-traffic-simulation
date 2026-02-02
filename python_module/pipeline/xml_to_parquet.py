@@ -15,7 +15,7 @@ Authors: Noah Kim & Joe Beck
 Date: 14.11.2025
 
 Example:
-    >>> from traffic_sim_module.pipeline.xml_to_parquet import xml_to_parquet_filtered
+    >>> from python_module.pipeline.xml_to_parquet import xml_to_parquet_filtered
     >>> time_intervals = [(28800, 32400), (61200, 64800)]  # 8-9am and 5-6pm
     >>> xml_to_parquet_filtered(
     ...     xml_input="events.xml",

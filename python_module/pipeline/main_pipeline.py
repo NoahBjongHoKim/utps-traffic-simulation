@@ -30,7 +30,7 @@ Date: 2025
 
 Example:
     Run pipeline with configuration file:
-        $ python -m traffic_sim_module.pipeline.main_pipeline config.yaml
+        $ python -m python_module.pipeline.main_pipeline config.yaml
 
     Generate JSON schema for IDE autocomplete:
         $ python generate_config_schema.py > config_schema.json

@@ -9,7 +9,7 @@ Main components:
     - config: Global configuration and logging setup
 
 Example:
-    >>> from traffic_sim_module.pipeline.main_pipeline import run_pipeline
+    >>> from python_module.pipeline.main_pipeline import run_pipeline
     >>> run_pipeline(xml_path="data.xml", output_dir="output/")
 """
 

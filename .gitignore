@@ -287,4 +287,4 @@ _ReSharper*/
 # ArcGIS Pro Add-In specific
 *.esriAddinX
 *.esriAddIn
-c_sharp_project/Install/
+cs_module/Install/

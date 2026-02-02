@@ -16,7 +16,7 @@ The logger is automatically configured when this module is imported with:
     - Detailed formatting including timestamps, levels, and source locations
 
 Example:
-    >>> from traffic_sim_module.config import logger, DATA_DIR
+    >>> from python_module.config import logger, DATA_DIR
     >>> logger.info("Processing data...")
     >>> data_path = DATA_DIR / "input.xml"
 """

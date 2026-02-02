@@ -99,7 +99,7 @@ data/
 
 Run a pipeline directly using a configuration file:
 ```bash
-python -m traffic_sim_module.pipeline.main_pipeline configs/v4_morning_rush.yaml
+python -m python_module.pipeline.main_pipeline configs/v4_morning_rush.yaml
 ```
 
 ### Creating Configuration Files
@@ -133,13 +133,13 @@ output:
 
 ### Run a pipeline
 ```bash
-python -m traffic_sim_module.pipeline.main_pipeline configs/v4_morning_rush.yaml
+python -m python_module.pipeline.main_pipeline configs/v4_morning_rush.yaml
 ```
 
 ### Process multiple time windows
 ```bash
 # Edit your config file to include multiple time_windows, then run:
-python -m traffic_sim_module.pipeline.main_pipeline configs/multi_window.yaml
+python -m python_module.pipeline.main_pipeline configs/multi_window.yaml
 ```
 
 ### View logs

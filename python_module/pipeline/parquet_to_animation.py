@@ -20,7 +20,7 @@ Authors: Noah Kim & Joe Beck
 Date: 14.11.2025
 
 Example:
-    >>> from traffic_sim_module.pipeline.parquet_to_animation import parquet_to_geojson_animated
+    >>> from python_module.pipeline.parquet_to_animation import parquet_to_geojson_animated
     >>> parquet_to_geojson_animated(
     ...     parquet_path="filtered.parquet",
     ...     gpkg_path="network.gpkg",
@@ -58,7 +58,7 @@ except ImportError:
     # Import from absolute path
     repo_root = Path(__file__).parent.parent.parent
     sys.path.insert(0, str(repo_root))
-    from traffic_sim_module.utils.network_cache import (
+    from python_module.utils.network_cache import (
         build_link_attributes_dict,
         load_network_cached,
     )
