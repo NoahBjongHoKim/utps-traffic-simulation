@@ -1,0 +1,215 @@
+<Window x:Class="UTPS_Addin.TrafficConfigDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:UTPS_Addin"
+        Title="Traffic Data Loader - Configuration"
+        Height="520"
+        Width="650"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F0F0F0">
+
+    <Window.Resources>
+        <!-- Bool to Visibility Converter -->
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+
+        <!-- Style for section headers -->
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="0,15,0,8"/>
+            <Setter Property="Foreground" Value="#2C3E50"/>
+        </Style>
+
+        <!-- Style for labels -->
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,8,0,4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+
+        <!-- Style for text boxes -->
+        <Style x:Key="FieldTextBox" TargetType="TextBox">
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Style for buttons -->
+        <Style x:Key="BrowseButton" TargetType="Button">
+            <Setter Property="Width" Value="80"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Main content area -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+
+                <!-- Introduction -->
+                <TextBlock TextWrapping="Wrap" Margin="0,0,0,10">
+                    Configure the traffic simulation data import. Select your XML events file,
+                    specify the time range to import, and configure output settings.
+                </TextBlock>
+
+                <Separator Margin="0,10,0,0"/>
+
+                <!-- Input Files Section -->
+                <TextBlock Text="1. Input Files" Style="{StaticResource SectionHeader}"/>
+
+                <!-- XML File -->
+                <TextBlock Text="XML Events File *" Style="{StaticResource FieldLabel}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             Text="{Binding XmlFilePath, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource FieldTextBox}"
+                             ToolTip="Path to the XML events file from traffic simulation"/>
+                    <Button Grid.Column="1"
+                            Content="Browse..."
+                            Style="{StaticResource BrowseButton}"
+                            Command="{Binding BrowseXmlCommand}"/>
+                </Grid>
+
+                <!-- GPKG Network File -->
+                <TextBlock Text="Road Network (GeoPackage) *" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             Text="{Binding GpkgFilePath, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource FieldTextBox}"
+                             ToolTip="Path to GeoPackage file containing road network"/>
+                    <Button Grid.Column="1"
+                            Content="Browse..."
+                            Style="{StaticResource BrowseButton}"
+                            Command="{Binding BrowseGpkgCommand}"/>
+                </Grid>
+
+                <!-- Time Interval Section -->
+                <TextBlock Text="2. Time Range" Style="{StaticResource SectionHeader}"/>
+                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#666" Margin="0,0,0,8">
+                    Specify the time window to extract from the simulation (24-hour format).
+                </TextBlock>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="20"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Start Time -->
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Start Time (HH:MM) *" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding StartTime, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource FieldTextBox}"
+                                 ToolTip="Start time in 24-hour format (e.g., 08:00)"/>
+                    </StackPanel>
+
+                    <!-- Separator -->
+                    <TextBlock Grid.Column="1" Text="—"
+                               VerticalAlignment="Bottom"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,8"
+                               FontSize="16"/>
+
+                    <!-- End Time -->
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="End Time (HH:MM) *" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding EndTime, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource FieldTextBox}"
+                                 ToolTip="End time in 24-hour format (e.g., 09:00)"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Example times -->
+                <TextBlock FontSize="10" Foreground="#888" Margin="0,4,0,0">
+                    Examples: Morning rush (08:00 - 09:00), Evening rush (17:00 - 18:00)
+                </TextBlock>
+
+                <!-- Output Section -->
+                <TextBlock Text="3. Output Settings" Style="{StaticResource SectionHeader}"/>
+
+                <TextBlock Text="Output File Path *" Style="{StaticResource FieldLabel}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             Text="{Binding OutputPath, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource FieldTextBox}"
+                             ToolTip="Base path for output files (without extension)"/>
+                    <Button Grid.Column="1"
+                            Content="Browse..."
+                            Style="{StaticResource BrowseButton}"
+                            Command="{Binding BrowseOutputCommand}"/>
+                </Grid>
+
+                <TextBlock FontSize="10" Foreground="#888" Margin="0,4,0,0">
+                    Output will be saved as GeoParquet format for efficient storage and analysis.
+                </TextBlock>
+
+                <!-- Validation Messages -->
+                <Border Background="#FFF3CD"
+                        BorderBrush="#FFC107"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="10"
+                        Margin="0,15,0,0"
+                        Visibility="{Binding HasValidationErrors, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel>
+                        <TextBlock Text="⚠ Please correct the following:" FontWeight="Bold" Foreground="#856404"/>
+                        <TextBlock Text="{Binding ValidationMessage}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,5,0,0"
+                                   Foreground="#856404"/>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Bottom buttons -->
+        <Grid Grid.Row="2" Margin="0,15,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0"
+                       Text="* Required fields"
+                       VerticalAlignment="Center"
+                       FontSize="10"
+                       Foreground="#666"/>
+
+            <Button Grid.Column="1"
+                    Content="OK"
+                    Width="90"
+                    Height="32"
+                    Margin="0,0,10,0"
+                    IsDefault="True"
+                    Command="{Binding OkCommand}"/>
+
+            <Button Grid.Column="2"
+                    Content="Cancel"
+                    Width="90"
+                    Height="32"
+                    IsCancel="True"/>
+        </Grid>
+    </Grid>
+</Window>

@@ -6,13 +6,13 @@
         xsi:schemaLocation="http://schemas.esri.com/DADF/Registry file:///C:/Program%20Files/ArcGIS/Pro/bin/ArcGIS.Desktop.Framework.xsd">
 
   <AddInInfo id="{1f69aeb3-3d8a-4f86-a00d-bb7a5c61cb4c}" version="1.0" desktopVersion="3.6.59527" product="ArcGISPro">
-    <Name>UTPS_Addin</Name>   
-    <Description>UTPS_Addin description</Description>
+    <Name>UTPS Traffic Simulation Loader</Name>
+    <Description>Import and process traffic simulation data from XML events into ArcGIS-ready formats</Description>
     <Image>Images\AddinDesktop32.png</Image>
-    <Author>noahb</Author>
-    <Company>Acme</Company>
-    <Date>1/8/2026 3:44:58 PM</Date>
-    <Subject>Framework</Subject>
+    <Author>Noah Kim</Author>
+    <Company>UTPS</Company>
+    <Date>2/2/2026</Date>
+    <Subject>Geoprocessing, Map Authoring</Subject>
     <!-- Note subject can be one or more of these topics:
                     Content, Framework, Editing, Geodatabase, Geometry, Geoprocessing, Layouts, Map Authoring, Map Exploration -->
   </AddInInfo>
@@ -37,11 +37,15 @@
       
       <controls>
         <!-- add your controls here -->
-        <button id="UTPS_Addin_TrafficLoader_Button" caption="Load Traffic Data" 
-                className="TrafficLoaderButton" loadOnClick="true" 
-                smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue16.png" 
+        <button id="UTPS_Addin_TrafficLoader_Button" caption="Load Traffic Data"
+                className="TrafficLoaderButton" loadOnClick="true"
+                smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue16.png"
                 largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue32.png">
-          <tooltip heading="Load GPKG">Load and Style AADT Data from Downloads.<disabledText /></tooltip>
+          <tooltip heading="Import Traffic Simulation">
+            Load traffic simulation data from XML events file.
+            Configure time range and output format for analysis.
+            <disabledText />
+          </tooltip>
         </button>
       </controls> 
       
