@@ -199,18 +199,14 @@ namespace UTPS_Addin
                     {
                         try
                         {
-                            // Use ItemFactory to create an Item, then create layer from it
-                            Item gpkgItem = ItemFactory.Instance.Create(config.GpkgFilePath);
+                            // Use Uri and LayerFactory.CreateLayer (standard pattern from ArcGIS docs)
+                            Uri gpkgUri = new Uri(config.GpkgFilePath);
+                            Layer networkLayer = LayerFactory.Instance.CreateLayer(gpkgUri, map);
 
-                            if (gpkgItem != null)
+                            if (networkLayer != null)
                             {
-                                Layer networkLayer = LayerFactory.Instance.CreateLayer(gpkgItem, map);
-
-                                if (networkLayer != null)
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"Road network layer added: {networkLayer.Name}");
-                                    networkAdded = true;
-                                }
+                                System.Diagnostics.Debug.WriteLine($"Road network layer added: {networkLayer.Name}");
+                                networkAdded = true;
                             }
                         }
                         catch (Exception ex)
@@ -225,18 +221,14 @@ namespace UTPS_Addin
                     {
                         try
                         {
-                            // Use ItemFactory to create an Item, then create layer from it
-                            Item geojsonItem = ItemFactory.Instance.Create(geojsonPath);
+                            // Use Uri and LayerFactory.CreateLayer (standard pattern from ArcGIS docs)
+                            Uri geojsonUri = new Uri(geojsonPath);
+                            Layer eventsLayer = LayerFactory.Instance.CreateLayer(geojsonUri, map);
 
-                            if (geojsonItem != null)
+                            if (eventsLayer != null)
                             {
-                                Layer eventsLayer = LayerFactory.Instance.CreateLayer(geojsonItem, map);
-
-                                if (eventsLayer != null)
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"Event points layer added: {eventsLayer.Name}");
-                                    eventsAdded = true;
-                                }
+                                System.Diagnostics.Debug.WriteLine($"Event points layer added: {eventsLayer.Name}");
+                                eventsAdded = true;
                             }
                         }
                         catch (Exception ex)
