@@ -44,8 +44,9 @@ namespace UTPS_Addin
             // Set default output path
             _outputPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "TrafficData",
-                "output"
+                "UTPS",
+                "output",
+                "export_1"
             );
         }
 

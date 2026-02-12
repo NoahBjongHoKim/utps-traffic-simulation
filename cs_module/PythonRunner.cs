@@ -69,8 +69,33 @@ namespace UTPS_Addin
                 return embeddedPython;
             }
 
-            // Option 2: System Python (for development)
-            // Try common Python installations
+            // Option 2: Conda/Miniforge/Mamba installations (check first as they're common for data science)
+            string[] condaPaths = new[]
+            {
+                @"C:\Users\" + Environment.UserName + @"\Miniforge3\python.exe",
+                @"C:\Users\" + Environment.UserName + @"\miniforge3\python.exe",
+                @"C:\Users\" + Environment.UserName + @"\Mambaforge\python.exe",
+                @"C:\Users\" + Environment.UserName + @"\mambaforge\python.exe",
+                @"C:\Users\" + Environment.UserName + @"\Miniconda3\python.exe",
+                @"C:\Users\" + Environment.UserName + @"\miniconda3\python.exe",
+                @"C:\Users\" + Environment.UserName + @"\Anaconda3\python.exe",
+                @"C:\Users\" + Environment.UserName + @"\anaconda3\python.exe",
+                @"C:\ProgramData\Miniforge3\python.exe",
+                @"C:\ProgramData\Mambaforge\python.exe",
+                @"C:\ProgramData\Miniconda3\python.exe",
+                @"C:\ProgramData\Anaconda3\python.exe",
+            };
+
+            foreach (string path in condaPaths)
+            {
+                if (File.Exists(path))
+                {
+                    Debug.WriteLine($"Using Conda/Miniforge Python: {path}");
+                    return path;
+                }
+            }
+
+            // Option 3: Standard Python installations
             string[] pythonPaths = new[]
             {
                 @"C:\Python312\python.exe",
@@ -90,7 +115,7 @@ namespace UTPS_Addin
                 }
             }
 
-            // Option 3: Try to find Python on PATH
+            // Option 4: Try to find Python on PATH (but exclude Windows Store stub)
             string pythonFromPath = FindPythonOnPath();
             if (!string.IsNullOrEmpty(pythonFromPath))
             {
@@ -103,7 +128,7 @@ namespace UTPS_Addin
         }
 
         /// <summary>
-        /// Try to find Python on the system PATH.
+        /// Try to find Python on the system PATH, excluding Windows Store stub.
         /// </summary>
         private static string FindPythonOnPath()
         {
@@ -127,11 +152,24 @@ namespace UTPS_Addin
 
                 if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
                 {
-                    // Return the first Python found
-                    string firstPath = output.Split('\n')[0].Trim();
-                    if (File.Exists(firstPath))
+                    // Get all Python paths found
+                    string[] paths = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+                    foreach (string path in paths)
                     {
-                        return firstPath;
+                        string trimmedPath = path.Trim();
+
+                        // Skip Windows Store stub python.exe
+                        if (trimmedPath.Contains("WindowsApps") || trimmedPath.Contains("Microsoft\\WindowsApps"))
+                        {
+                            Debug.WriteLine($"Skipping Windows Store stub: {trimmedPath}");
+                            continue;
+                        }
+
+                        if (File.Exists(trimmedPath))
+                        {
+                            return trimmedPath;
+                        }
                     }
                 }
             }

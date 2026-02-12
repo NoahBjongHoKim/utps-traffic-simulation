@@ -2,10 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Processing Traffic Data"
-        Height="220"
-        Width="500"
+        Height="400"
+        Width="700"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize"
+        ResizeMode="CanResize"
         WindowStyle="SingleBorderWindow"
         ShowInTaskbar="False">
 
@@ -49,13 +49,12 @@
                 BorderThickness="1"
                 Background="#F9F9F9"
                 Margin="0,0,0,10">
-            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                          MaxHeight="60">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <TextBlock Text="{Binding DetailedLog}"
                            FontFamily="Consolas"
-                           FontSize="10"
+                           FontSize="11"
                            Foreground="#333"
-                           Padding="5"
+                           Padding="8"
                            TextWrapping="Wrap"/>
             </ScrollViewer>
         </Border>
