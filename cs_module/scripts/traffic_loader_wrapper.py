@@ -96,9 +96,9 @@ def run_pipeline(args):
         repo_root = Path(__file__).parent.parent.parent
         sys.path.insert(0, str(repo_root))
 
-        from traffic_sim_module.pipeline.xml_to_parquet import xml_to_parquet_filtered
-        from traffic_sim_module.pipeline.parquet_to_animation import parquet_to_export
-        from traffic_sim_module.utils.network_cache import build_link_attributes_dict, load_network_cached
+        from python_module.pipeline.xml_to_parquet import xml_to_parquet_filtered
+        from python_module.pipeline.parquet_to_animation import parquet_to_export
+        from python_module.utils.network_cache import build_link_attributes_dict, load_network_cached
 
         print_progress("INIT", 10, "Modules loaded successfully")
 
@@ -135,8 +135,8 @@ def run_pipeline(args):
         )
         print_progress("XML_PARSE", 60, "XML parsing complete")
 
-        # Stage 3: Parquet to GeoParquet
-        print_progress("INTERPOLATE", 65, "Starting trajectory interpolation...")
+        # Stage 3: Parquet to GeoParquet (snapshot mode - simple event points)
+        print_progress("EXPORT", 65, "Creating event point layer...")
         parquet_to_export(
             parquet_input=intermediate_parquet,
             link_attrs=link_attrs,
@@ -144,9 +144,9 @@ def run_pipeline(args):
             output_formats=['geoparquet'],  # Default to geoparquet for ArcGIS
             num_workers=args.workers,
             chunk_size=args.chunk_size,
-            snapshot_mode=False
+            snapshot_mode=True  # Output simple event points, not interpolated trajectories
         )
-        print_progress("INTERPOLATE", 95, "Interpolation complete")
+        print_progress("EXPORT", 95, "Event points created")
 
         # Cleanup intermediate file if requested
         if not args.keep_intermediate:

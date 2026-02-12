@@ -1,6 +1,10 @@
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
+using ArcGIS.Desktop.Mapping;
+using ArcGIS.Desktop.Catalog;
+using ArcGIS.Core.Data;
 using System;
+using System.IO;
 using System.Threading.Tasks;
 
 namespace UTPS_Addin
@@ -137,11 +141,13 @@ namespace UTPS_Addin
                 progressDialog.StartProcessing(runner);
                 bool? dialogResult = progressDialog.ShowDialog();
 
-                // If processing succeeded, optionally load the result into ArcGIS Pro
+                // If processing succeeded, load the result into ArcGIS Pro
                 if (dialogResult == true)
                 {
                     System.Diagnostics.Debug.WriteLine("Processing completed successfully");
-                    // TODO: Phase 3 - Add result to map
+
+                    // Add layers to map asynchronously
+                    QueuedTask.Run(() => AddLayersToMap(config)).Wait();
                 }
             }
             catch (Exception ex)
@@ -153,6 +159,110 @@ namespace UTPS_Addin
                     System.Windows.MessageBoxImage.Error
                 );
                 System.Diagnostics.Debug.WriteLine($"Error in StartProcessing: {ex}");
+            }
+        }
+
+        /// <summary>
+        /// Add road network and event points layers to the active map.
+        /// Must be called within QueuedTask.Run().
+        /// </summary>
+        private async Task AddLayersToMap(TrafficConfigViewModel config)
+        {
+            try
+            {
+                // Get active map
+                Map map = MapView.Active?.Map;
+                if (map == null)
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                        "No active map found. Please open a map to add layers.",
+                        "No Active Map",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning
+                    );
+                    return;
+                }
+
+                System.Diagnostics.Debug.WriteLine("Adding layers to map...");
+
+                // 1. Add Road Network Layer (GPKG)
+                if (File.Exists(config.GpkgFilePath))
+                {
+                    try
+                    {
+                        Uri gpkgUri = new Uri(config.GpkgFilePath);
+                        Layer networkLayer = LayerFactory.Instance.CreateLayer(gpkgUri, map);
+
+                        if (networkLayer != null)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Road network layer added: {networkLayer.Name}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Error adding road network layer: {ex.Message}");
+                    }
+                }
+
+                // 2. Add Event Points Layer (GeoParquet)
+                string geoparquetPath = config.OutputPath + ".geoparquet";
+                if (File.Exists(geoparquetPath))
+                {
+                    try
+                    {
+                        Uri parquetUri = new Uri(geoparquetPath);
+                        Layer eventsLayer = LayerFactory.Instance.CreateLayer(parquetUri, map);
+
+                        if (eventsLayer != null)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Event points layer added: {eventsLayer.Name}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Error adding event points layer: {ex.Message}");
+
+                        // If GeoParquet fails, show helpful message
+                        ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                            $"Road network loaded successfully.\n\n" +
+                            $"Note: Event points layer could not be added automatically.\n" +
+                            $"You can manually add the GeoParquet file:\n{geoparquetPath}",
+                            "Layer Load Information",
+                            System.Windows.MessageBoxButton.OK,
+                            System.Windows.MessageBoxImage.Information
+                        );
+                        return;
+                    }
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"GeoParquet file not found at: {geoparquetPath}");
+                }
+
+                // Success message
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                    "Traffic data loaded successfully!\n\n" +
+                    "Layers added:\n" +
+                    "• Road Network\n" +
+                    "• Event Points\n\n" +
+                    $"Time range: {config.StartTime} - {config.EndTime}",
+                    "Success",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Information
+                );
+
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in AddLayersToMap: {ex}");
+
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                    $"Processing completed, but error adding layers to map:\n{ex.Message}\n\n" +
+                    $"You can manually add the output files from:\n{config.OutputPath}",
+                    "Layer Load Error",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning
+                );
             }
         }
     }
