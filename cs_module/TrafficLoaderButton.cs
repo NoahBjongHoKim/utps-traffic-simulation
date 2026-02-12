@@ -3,6 +3,7 @@ using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
 using ArcGIS.Desktop.Catalog;
 using ArcGIS.Core.Data;
+using ArcGIS.Core.Geoprocessing;
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -251,21 +252,28 @@ namespace UTPS_Addin
                             {
                                 System.Diagnostics.Debug.WriteLine($"Parquet table added: {table.Name}");
 
-                                // Step 2: Create XY Event Layer from the table
+                                // Step 2: Create XY Event Layer using geoprocessing tool
                                 // The Parquet has columns: x, y, timestamp, angle, person_id, interval_id, travelling_speed, freespeed, s
-                                var eventLayerParams = new XYEventLayerCreationParams(table)
-                                {
-                                    Name = "Traffic Events",
-                                    XField = "x",
-                                    YField = "y",
-                                    SpatialReference = ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326) // WGS84
-                                };
+                                var parameters = Geoprocessing.MakeValueArray(
+                                    table.Name,              // Input table
+                                    "x",                     // X Field
+                                    "y",                     // Y Field
+                                    "Traffic Events",        // Output layer name
+                                    ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326) // WGS84
+                                );
 
-                                Layer eventsLayer = LayerFactory.Instance.CreateLayer<FeatureLayer>(eventLayerParams, map);
+                                var gpResult = Geoprocessing.ExecuteToolAsync(
+                                    "management.MakeXYEventLayer",
+                                    parameters
+                                ).Result;
 
-                                if (eventsLayer != null)
+                                if (gpResult.IsFailed)
                                 {
-                                    System.Diagnostics.Debug.WriteLine($"XY Event Layer created: {eventsLayer.Name}");
+                                    System.Diagnostics.Debug.WriteLine($"Failed to create XY event layer: {string.Join(", ", gpResult.ErrorMessages)}");
+                                }
+                                else
+                                {
+                                    System.Diagnostics.Debug.WriteLine("XY Event Layer created successfully");
                                     eventsAdded = true;
 
                                     // Remove the standalone table since we now have the layer
