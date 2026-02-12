@@ -33,8 +33,13 @@
           <!-- host controls within groups -->
           <button refID="UTPS_Addin_TrafficLoader_Button" size="large"/>
         </group>
+        <group id="UTPS_Addin_Group2" caption="Test/Debug" appearsOnAddInTab="true">
+          <!-- Test buttons for debugging -->
+          <button refID="UTPS_Addin_TestParquet_Button" size="small"/>
+          <button refID="UTPS_Addin_TestPoint_Button" size="small"/>
+        </group>
       </groups>
-      
+
       <controls>
         <!-- add your controls here -->
         <button id="UTPS_Addin_TrafficLoader_Button" caption="Load Traffic Data"
@@ -44,6 +49,31 @@
           <tooltip heading="Import Traffic Simulation">
             Load traffic simulation data from XML events file.
             Configure time range and output format for analysis.
+            <disabledText />
+          </tooltip>
+        </button>
+
+        <!-- Test buttons -->
+        <button id="UTPS_Addin_TestParquet_Button" caption="Test: Import Parquet"
+                className="TestParquetButton" loadOnClick="true"
+                smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen16.png"
+                largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen32.png">
+          <tooltip heading="Test Parquet Import">
+            Test button: Import a Parquet file as a table.
+            Opens file dialog to select Parquet file.
+            Check Output window for detailed logs.
+            <disabledText />
+          </tooltip>
+        </button>
+
+        <button id="UTPS_Addin_TestPoint_Button" caption="Test: Create Point"
+                className="TestPointButton" loadOnClick="true"
+                smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonOrange16.png"
+                largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonOrange32.png">
+          <tooltip heading="Test Point Creation">
+            Test button: Create a single point feature layer.
+            Creates a point in San Francisco for testing.
+            Check Output window for detailed logs.
             <disabledText />
           </tooltip>
         </button>
