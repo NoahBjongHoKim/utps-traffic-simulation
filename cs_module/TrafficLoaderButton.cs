@@ -199,28 +199,17 @@ namespace UTPS_Addin
                     {
                         try
                         {
-                            // For GPKG, we need to specify which layer to load
-                            // Try to open the GPKG and get the first feature class
-                            using (Geodatabase geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(config.GpkgFilePath))))
+                            // Use ItemFactory to create an Item, then create layer from it
+                            Item gpkgItem = ItemFactory.Instance.Create(config.GpkgFilePath);
+
+                            if (gpkgItem != null)
                             {
-                                var featureClassDefinitions = geodatabase.GetDefinitions<FeatureClassDefinition>();
-                                foreach (var fcDef in featureClassDefinitions)
+                                Layer networkLayer = LayerFactory.Instance.CreateLayer(gpkgItem, map);
+
+                                if (networkLayer != null)
                                 {
-                                    string featureClassName = fcDef.GetName();
-
-                                    // Create layer using GPKG path + layer name
-                                    Layer networkLayer = LayerFactory.Instance.CreateFeatureLayer(
-                                        new Uri(config.GpkgFilePath),
-                                        map,
-                                        layerName: featureClassName
-                                    );
-
-                                    if (networkLayer != null)
-                                    {
-                                        System.Diagnostics.Debug.WriteLine($"Road network layer added: {networkLayer.Name}");
-                                        networkAdded = true;
-                                        break; // Only add first layer
-                                    }
+                                    System.Diagnostics.Debug.WriteLine($"Road network layer added: {networkLayer.Name}");
+                                    networkAdded = true;
                                 }
                             }
                         }
@@ -236,15 +225,18 @@ namespace UTPS_Addin
                     {
                         try
                         {
-                            Layer eventsLayer = LayerFactory.Instance.CreateFeatureLayer(
-                                new Uri(geojsonPath),
-                                map
-                            );
+                            // Use ItemFactory to create an Item, then create layer from it
+                            Item geojsonItem = ItemFactory.Instance.Create(geojsonPath);
 
-                            if (eventsLayer != null)
+                            if (geojsonItem != null)
                             {
-                                System.Diagnostics.Debug.WriteLine($"Event points layer added: {eventsLayer.Name}");
-                                eventsAdded = true;
+                                Layer eventsLayer = LayerFactory.Instance.CreateLayer(geojsonItem, map);
+
+                                if (eventsLayer != null)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"Event points layer added: {eventsLayer.Name}");
+                                    eventsAdded = true;
+                                }
                             }
                         }
                         catch (Exception ex)
