@@ -204,14 +204,14 @@ namespace UTPS_Addin
                     }
                 }
 
-                // 2. Add Event Points Layer (GeoParquet)
-                string geoparquetPath = config.OutputPath + ".geoparquet";
-                if (File.Exists(geoparquetPath))
+                // 2. Add Event Points Layer (GeoJSON)
+                string geojsonPath = config.OutputPath + ".geojson";
+                if (File.Exists(geojsonPath))
                 {
                     try
                     {
-                        Uri parquetUri = new Uri(geoparquetPath);
-                        Layer eventsLayer = LayerFactory.Instance.CreateLayer(parquetUri, map);
+                        Uri geojsonUri = new Uri(geojsonPath);
+                        Layer eventsLayer = LayerFactory.Instance.CreateLayer(geojsonUri, map);
 
                         if (eventsLayer != null)
                         {
@@ -222,11 +222,11 @@ namespace UTPS_Addin
                     {
                         System.Diagnostics.Debug.WriteLine($"Error adding event points layer: {ex.Message}");
 
-                        // If GeoParquet fails, show helpful message
+                        // If GeoJSON fails, show helpful message
                         ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
                             $"Road network loaded successfully.\n\n" +
                             $"Note: Event points layer could not be added automatically.\n" +
-                            $"You can manually add the GeoParquet file:\n{geoparquetPath}",
+                            $"You can manually add the GeoJSON file:\n{geojsonPath}",
                             "Layer Load Information",
                             System.Windows.MessageBoxButton.OK,
                             System.Windows.MessageBoxImage.Information
@@ -236,7 +236,7 @@ namespace UTPS_Addin
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"GeoParquet file not found at: {geoparquetPath}");
+                    System.Diagnostics.Debug.WriteLine($"GeoJSON file not found at: {geojsonPath}");
                 }
 
                 // Success message

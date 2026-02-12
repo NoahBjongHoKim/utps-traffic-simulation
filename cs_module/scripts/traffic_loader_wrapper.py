@@ -135,18 +135,18 @@ def run_pipeline(args):
         )
         print_progress("XML_PARSE", 60, "XML parsing complete")
 
-        # Stage 3: Parquet to GeoParquet (snapshot mode - simple event points)
-        print_progress("EXPORT", 65, "Creating event point layer...")
+        # Stage 3: Export to Parquet and GeoJSON (snapshot mode - simple event points)
+        print_progress("EXPORT", 65, "Creating event point layers...")
         parquet_to_export(
             parquet_input=intermediate_parquet,
             link_attrs=link_attrs,
             output_base=args.output,
-            output_formats=['geoparquet'],  # Default to geoparquet for ArcGIS
+            output_formats=['parquet', 'geojson'],  # Parquet for internal use, GeoJSON for ArcGIS
             num_workers=args.workers,
             chunk_size=args.chunk_size,
             snapshot_mode=True  # Output simple event points, not interpolated trajectories
         )
-        print_progress("EXPORT", 95, "Event points created")
+        print_progress("EXPORT", 95, "Event point layers created")
 
         # Cleanup intermediate file if requested
         if not args.keep_intermediate:
@@ -157,9 +157,10 @@ def run_pipeline(args):
                 pass  # Don't fail if cleanup fails
 
         # Success!
-        output_file = args.output + ".geoparquet"
+        output_geojson = args.output + ".geojson"
+        output_parquet = args.output + ".parquet"
         print_progress("COMPLETE", 100, "Pipeline complete")
-        print_success(output_file)
+        print_success(output_geojson)  # Return GeoJSON path for ArcGIS layer loading
 
         return 0
 
