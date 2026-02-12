@@ -146,8 +146,8 @@ namespace UTPS_Addin
                 {
                     System.Diagnostics.Debug.WriteLine("Processing completed successfully");
 
-                    // Add layers to map asynchronously
-                    QueuedTask.Run(() => AddLayersToMap(config)).Wait();
+                    // Add layers to map (method uses QueuedTask internally)
+                    AddLayersToMap(config).Wait();
                 }
             }
             catch (Exception ex)
@@ -164,15 +164,14 @@ namespace UTPS_Addin
 
         /// <summary>
         /// Add road network and event points layers to the active map.
-        /// Must be called within QueuedTask.Run().
+        /// Uses QueuedTask.Run() internally for thread-safe ArcGIS operations.
         /// </summary>
         private async Task AddLayersToMap(TrafficConfigViewModel config)
         {
             try
             {
-                // Get active map
-                Map map = MapView.Active?.Map;
-                if (map == null)
+                // Check if there's an active map view
+                if (MapView.Active == null)
                 {
                     ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
                         "No active map found. Please open a map to add layers.",
@@ -185,80 +184,141 @@ namespace UTPS_Addin
 
                 System.Diagnostics.Debug.WriteLine("Adding layers to map...");
 
-                // 1. Add Road Network Layer (GPKG)
-                if (File.Exists(config.GpkgFilePath))
-                {
-                    try
-                    {
-                        Uri gpkgUri = new Uri(config.GpkgFilePath);
-                        Layer networkLayer = LayerFactory.Instance.CreateLayer(gpkgUri, map);
-
-                        if (networkLayer != null)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Road network layer added: {networkLayer.Name}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Error adding road network layer: {ex.Message}");
-                    }
-                }
-
-                // 2. Add Event Points Layer (GeoJSON)
+                // Track which layers were successfully added
+                bool networkAdded = false;
+                bool eventsAdded = false;
                 string geojsonPath = config.OutputPath + ".geojson";
-                if (File.Exists(geojsonPath))
-                {
-                    try
-                    {
-                        Uri geojsonUri = new Uri(geojsonPath);
-                        Layer eventsLayer = LayerFactory.Instance.CreateLayer(geojsonUri, map);
 
-                        if (eventsLayer != null)
+                // Add layers within QueuedTask (required for ArcGIS Pro SDK)
+                await QueuedTask.Run(() =>
+                {
+                    Map map = MapView.Active.Map;
+
+                    // 1. Add Road Network Layer (GPKG)
+                    if (File.Exists(config.GpkgFilePath))
+                    {
+                        try
                         {
-                            System.Diagnostics.Debug.WriteLine($"Event points layer added: {eventsLayer.Name}");
+                            // For GPKG, we need to specify which layer to load
+                            // Try to open the GPKG and get the first feature class
+                            using (Geodatabase geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(config.GpkgFilePath))))
+                            {
+                                var featureClassDefinitions = geodatabase.GetDefinitions<FeatureClassDefinition>();
+                                foreach (var fcDef in featureClassDefinitions)
+                                {
+                                    string featureClassName = fcDef.GetName();
+
+                                    // Create layer using GPKG path + layer name
+                                    Layer networkLayer = LayerFactory.Instance.CreateFeatureLayer(
+                                        new Uri(config.GpkgFilePath),
+                                        map,
+                                        layerName: featureClassName
+                                    );
+
+                                    if (networkLayer != null)
+                                    {
+                                        System.Diagnostics.Debug.WriteLine($"Road network layer added: {networkLayer.Name}");
+                                        networkAdded = true;
+                                        break; // Only add first layer
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Error adding road network layer: {ex.Message}");
+                            System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Error adding event points layer: {ex.Message}");
 
-                        // If GeoJSON fails, show helpful message
-                        ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
-                            $"Road network loaded successfully.\n\n" +
-                            $"Note: Event points layer could not be added automatically.\n" +
-                            $"You can manually add the GeoJSON file:\n{geojsonPath}",
-                            "Layer Load Information",
-                            System.Windows.MessageBoxButton.OK,
-                            System.Windows.MessageBoxImage.Information
-                        );
-                        return;
+                    // 2. Add Event Points Layer (GeoJSON)
+                    if (File.Exists(geojsonPath))
+                    {
+                        try
+                        {
+                            Layer eventsLayer = LayerFactory.Instance.CreateFeatureLayer(
+                                new Uri(geojsonPath),
+                                map
+                            );
+
+                            if (eventsLayer != null)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"Event points layer added: {eventsLayer.Name}");
+                                eventsAdded = true;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Error adding event points layer: {ex.Message}");
+                            System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+                        }
                     }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"GeoJSON file not found at: {geojsonPath}");
+                    }
+                });
+
+                // Show appropriate success/error message based on what was added
+                if (networkAdded && eventsAdded)
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                        "Traffic data loaded successfully!\n\n" +
+                        "Layers added:\n" +
+                        "• Road Network\n" +
+                        "• Event Points\n\n" +
+                        $"Time range: {config.StartTime} - {config.EndTime}",
+                        "Success",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Information
+                    );
+                }
+                else if (!networkAdded && !eventsAdded)
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                        $"Processing completed successfully, but layers could not be added automatically.\n\n" +
+                        $"Please manually add the files:\n" +
+                        $"• Road Network: {config.GpkgFilePath}\n" +
+                        $"• Event Points: {geojsonPath}\n\n" +
+                        $"Use the 'Add Data' button in ArcGIS Pro.",
+                        "Manual Layer Addition Required",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Information
+                    );
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"GeoJSON file not found at: {geojsonPath}");
+                    // Partial success
+                    string addedLayers = "";
+                    string failedLayers = "";
+
+                    if (networkAdded) addedLayers += "• Road Network\n";
+                    else failedLayers += $"• Road Network: {config.GpkgFilePath}\n";
+
+                    if (eventsAdded) addedLayers += "• Event Points\n";
+                    else failedLayers += $"• Event Points: {geojsonPath}\n";
+
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                        $"Processing completed!\n\n" +
+                        $"Layers added:\n{addedLayers}\n" +
+                        $"Please manually add:\n{failedLayers}\n" +
+                        $"Time range: {config.StartTime} - {config.EndTime}",
+                        "Partial Success",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Information
+                    );
                 }
-
-                // Success message
-                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
-                    "Traffic data loaded successfully!\n\n" +
-                    "Layers added:\n" +
-                    "• Road Network\n" +
-                    "• Event Points\n\n" +
-                    $"Time range: {config.StartTime} - {config.EndTime}",
-                    "Success",
-                    System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Information
-                );
-
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error in AddLayersToMap: {ex}");
+                System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
 
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
                     $"Processing completed, but error adding layers to map:\n{ex.Message}\n\n" +
-                    $"You can manually add the output files from:\n{config.OutputPath}",
+                    $"You can manually add the output files:\n" +
+                    $"• GeoJSON: {config.OutputPath}.geojson\n" +
+                    $"• GPKG: {config.GpkgFilePath}",
                     "Layer Load Error",
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Warning
