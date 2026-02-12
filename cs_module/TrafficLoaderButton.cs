@@ -199,14 +199,34 @@ namespace UTPS_Addin
                     {
                         try
                         {
-                            // Use Uri and LayerFactory.CreateLayer (standard pattern from ArcGIS docs)
-                            Uri gpkgUri = new Uri(config.GpkgFilePath);
-                            Layer networkLayer = LayerFactory.Instance.CreateLayer(gpkgUri, map);
+                            // GPKG with specific feature class: path + "/" + feature_class_name
+                            // For GPKG files, the feature class is typically "main.table_name"
+                            string gpkgPath = config.GpkgFilePath;
 
-                            if (networkLayer != null)
+                            // Try with the specific feature class name first
+                            Uri gpkgUriWithLayer = new Uri(gpkgPath + "/main.clipped_single");
+
+                            try
                             {
-                                System.Diagnostics.Debug.WriteLine($"Road network layer added: {networkLayer.Name}");
-                                networkAdded = true;
+                                Layer networkLayer = LayerFactory.Instance.CreateLayer(gpkgUriWithLayer, map);
+                                if (networkLayer != null)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"Road network layer added: {networkLayer.Name}");
+                                    networkAdded = true;
+                                }
+                            }
+                            catch
+                            {
+                                // If that fails, try without specifying the layer (will use first available)
+                                System.Diagnostics.Debug.WriteLine("Trying to add GPKG without specifying layer name...");
+                                Uri gpkgUri = new Uri(gpkgPath);
+                                Layer networkLayer = LayerFactory.Instance.CreateLayer(gpkgUri, map);
+
+                                if (networkLayer != null)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"Road network layer added: {networkLayer.Name}");
+                                    networkAdded = true;
+                                }
                             }
                         }
                         catch (Exception ex)
