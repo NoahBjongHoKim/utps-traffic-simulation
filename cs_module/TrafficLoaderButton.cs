@@ -187,7 +187,7 @@ namespace UTPS_Addin
                 // Track which layers were successfully added
                 bool networkAdded = false;
                 bool eventsAdded = false;
-                string geojsonPath = config.OutputPath + ".geojson";
+                string parquetPath = config.OutputPath + ".parquet";
 
                 // Add layers within QueuedTask (required for ArcGIS Pro SDK)
                 await QueuedTask.Run(() =>
@@ -236,30 +236,52 @@ namespace UTPS_Addin
                         }
                     }
 
-                    // 2. Add Event Points Layer (GeoJSON)
-                    if (File.Exists(geojsonPath))
+                    // 2. Add Event Points Layer from Parquet (using XY Event Layer)
+                    if (File.Exists(parquetPath))
                     {
                         try
                         {
-                            // Use Uri and LayerFactory.CreateLayer (standard pattern from ArcGIS docs)
-                            Uri geojsonUri = new Uri(geojsonPath);
-                            Layer eventsLayer = LayerFactory.Instance.CreateLayer(geojsonUri, map);
+                            // APPROACH: Create XY Event Layer from Parquet table
+                            // Step 1: Add Parquet as a standalone table
+                            System.Diagnostics.Debug.WriteLine($"Adding Parquet table: {parquetPath}");
+                            Uri parquetUri = new Uri(parquetPath);
+                            StandaloneTable table = StandaloneTableFactory.Instance.CreateStandaloneTable(parquetUri, map);
 
-                            if (eventsLayer != null)
+                            if (table != null)
                             {
-                                System.Diagnostics.Debug.WriteLine($"Event points layer added: {eventsLayer.Name}");
-                                eventsAdded = true;
+                                System.Diagnostics.Debug.WriteLine($"Parquet table added: {table.Name}");
+
+                                // Step 2: Create XY Event Layer from the table
+                                // The Parquet has columns: x, y, timestamp, angle, person_id, interval_id, travelling_speed, freespeed, s
+                                var eventLayerParams = new XYEventLayerCreationParams(table)
+                                {
+                                    Name = "Traffic Events",
+                                    XField = "x",
+                                    YField = "y",
+                                    SpatialReference = ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326) // WGS84
+                                };
+
+                                Layer eventsLayer = LayerFactory.Instance.CreateLayer<FeatureLayer>(eventLayerParams, map);
+
+                                if (eventsLayer != null)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"XY Event Layer created: {eventsLayer.Name}");
+                                    eventsAdded = true;
+
+                                    // Remove the standalone table since we now have the layer
+                                    map.RemoveStandaloneTable(table);
+                                }
                             }
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"Error adding event points layer: {ex.Message}");
+                            System.Diagnostics.Debug.WriteLine($"Error adding event points layer from Parquet: {ex.Message}");
                             System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
                         }
                     }
                     else
                     {
-                        System.Diagnostics.Debug.WriteLine($"GeoJSON file not found at: {geojsonPath}");
+                        System.Diagnostics.Debug.WriteLine($"Parquet file not found at: {parquetPath}");
                     }
                 });
 
@@ -270,7 +292,7 @@ namespace UTPS_Addin
                         "Traffic data loaded successfully!\n\n" +
                         "Layers added:\n" +
                         "• Road Network\n" +
-                        "• Event Points\n\n" +
+                        "• Traffic Events (XY Event Layer)\n\n" +
                         $"Time range: {config.StartTime} - {config.EndTime}",
                         "Success",
                         System.Windows.MessageBoxButton.OK,
@@ -279,38 +301,83 @@ namespace UTPS_Addin
                 }
                 else if (!networkAdded && !eventsAdded)
                 {
+                    // Show detailed instructions for manual layer addition
+                    string instructions =
+                        "Processing completed successfully! ✓\n\n" +
+                        "The output files have been created, but automatic layer addition failed.\n" +
+                        "You can add them manually:\n\n" +
+                        "HOW TO ADD LAYERS MANUALLY:\n" +
+                        "──────────────────────────\n" +
+                        "1. Road Network (GPKG):\n" +
+                        "   • Map tab → Add Data\n" +
+                        $"   • Browse to: {config.GpkgFilePath}\n\n" +
+                        "2. Traffic Events (Parquet table → XY Event Layer):\n" +
+                        "   • Map tab → Add Data\n" +
+                        $"   • Browse to: {parquetPath}\n" +
+                        "   • Right-click table → Display XY Data\n" +
+                        "   • X Field: x, Y Field: y\n" +
+                        "   • Coordinate System: WGS84 (EPSG:4326)\n\n" +
+                        $"Time range processed: {config.StartTime} - {config.EndTime}\n\n" +
+                        "TIP: Windows Explorer will open to the output folder.";
+
                     ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
-                        $"Processing completed successfully, but layers could not be added automatically.\n\n" +
-                        $"Please manually add the files:\n" +
-                        $"• Road Network: {config.GpkgFilePath}\n" +
-                        $"• Event Points: {geojsonPath}\n\n" +
-                        $"Use the 'Add Data' button in ArcGIS Pro.",
+                        instructions,
                         "Manual Layer Addition Required",
                         System.Windows.MessageBoxButton.OK,
                         System.Windows.MessageBoxImage.Information
                     );
+
+                    // Also open the output folder in Windows Explorer to help the user
+                    try
+                    {
+                        string outputFolder = Path.GetDirectoryName(parquetPath);
+                        if (Directory.Exists(outputFolder))
+                        {
+                            System.Diagnostics.Process.Start("explorer.exe", outputFolder);
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore errors opening explorer
+                    }
                 }
                 else
                 {
                     // Partial success
                     string addedLayers = "";
-                    string failedLayers = "";
+                    string manualLayers = "";
 
-                    if (networkAdded) addedLayers += "• Road Network\n";
-                    else failedLayers += $"• Road Network: {config.GpkgFilePath}\n";
+                    if (networkAdded)
+                        addedLayers += "• Road Network\n";
+                    else
+                        manualLayers += $"Road Network (GPKG):\n  {config.GpkgFilePath}\n\n";
 
-                    if (eventsAdded) addedLayers += "• Event Points\n";
-                    else failedLayers += $"• Event Points: {geojsonPath}\n";
+                    if (eventsAdded)
+                        addedLayers += "• Traffic Events\n";
+                    else
+                        manualLayers += $"Traffic Events (Parquet):\n  {parquetPath}\n  (Use Display XY Data: x field, y field, WGS84)\n\n";
 
                     ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
                         $"Processing completed!\n\n" +
-                        $"Layers added:\n{addedLayers}\n" +
-                        $"Please manually add:\n{failedLayers}\n" +
+                        $"AUTOMATICALLY ADDED:\n{addedLayers}\n" +
+                        $"PLEASE ADD MANUALLY:\n{manualLayers}" +
+                        $"Use Map → Add Data in ArcGIS Pro.\n\n" +
                         $"Time range: {config.StartTime} - {config.EndTime}",
-                        "Partial Success",
+                        "Partial Success - Manual Action Needed",
                         System.Windows.MessageBoxButton.OK,
                         System.Windows.MessageBoxImage.Information
                     );
+
+                    // Open output folder
+                    try
+                    {
+                        string outputFolder = Path.GetDirectoryName(parquetPath);
+                        if (Directory.Exists(outputFolder))
+                        {
+                            System.Diagnostics.Process.Start("explorer.exe", outputFolder);
+                        }
+                    }
+                    catch { }
                 }
             }
             catch (Exception ex)
@@ -321,7 +388,7 @@ namespace UTPS_Addin
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
                     $"Processing completed, but error adding layers to map:\n{ex.Message}\n\n" +
                     $"You can manually add the output files:\n" +
-                    $"• GeoJSON: {config.OutputPath}.geojson\n" +
+                    $"• Parquet: {config.OutputPath}.parquet (use Display XY Data)\n" +
                     $"• GPKG: {config.GpkgFilePath}",
                     "Layer Load Error",
                     System.Windows.MessageBoxButton.OK,
