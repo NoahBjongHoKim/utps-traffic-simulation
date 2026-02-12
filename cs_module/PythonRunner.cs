@@ -34,21 +34,113 @@ namespace UTPS_Addin
 
         public PythonRunner()
         {
-            // Get path to embedded Python
+            // Get path to Python executable
+            // Try system Python first, then fall back to embedded Python
+            _pythonExePath = FindPythonExecutable();
+
+            // Get script path
             string addInFolder = Path.GetDirectoryName(typeof(PythonRunner).Assembly.Location);
-            _pythonExePath = Path.Combine(addInFolder, "python_embed", "python.exe");
             _scriptPath = Path.Combine(addInFolder, "scripts", "traffic_loader_wrapper.py");
 
             // Validate paths
             if (!File.Exists(_pythonExePath))
             {
-                throw new FileNotFoundException($"Embedded Python not found at: {_pythonExePath}");
+                throw new FileNotFoundException($"Python executable not found at: {_pythonExePath}");
             }
 
             if (!File.Exists(_scriptPath))
             {
                 throw new FileNotFoundException($"Wrapper script not found at: {_scriptPath}");
             }
+        }
+
+        /// <summary>
+        /// Find Python executable - tries system Python first, then embedded Python.
+        /// </summary>
+        private static string FindPythonExecutable()
+        {
+            string addInFolder = Path.GetDirectoryName(typeof(PythonRunner).Assembly.Location);
+
+            // Option 1: Embedded Python (for deployment)
+            string embeddedPython = Path.Combine(addInFolder, "python_embed", "python.exe");
+            if (File.Exists(embeddedPython))
+            {
+                Debug.WriteLine($"Using embedded Python: {embeddedPython}");
+                return embeddedPython;
+            }
+
+            // Option 2: System Python (for development)
+            // Try common Python installations
+            string[] pythonPaths = new[]
+            {
+                @"C:\Python312\python.exe",
+                @"C:\Python311\python.exe",
+                @"C:\Python310\python.exe",
+                @"C:\Users\" + Environment.UserName + @"\AppData\Local\Programs\Python\Python312\python.exe",
+                @"C:\Users\" + Environment.UserName + @"\AppData\Local\Programs\Python\Python311\python.exe",
+                @"C:\Users\" + Environment.UserName + @"\AppData\Local\Programs\Python\Python310\python.exe",
+            };
+
+            foreach (string path in pythonPaths)
+            {
+                if (File.Exists(path))
+                {
+                    Debug.WriteLine($"Using system Python: {path}");
+                    return path;
+                }
+            }
+
+            // Option 3: Try to find Python on PATH
+            string pythonFromPath = FindPythonOnPath();
+            if (!string.IsNullOrEmpty(pythonFromPath))
+            {
+                Debug.WriteLine($"Using Python from PATH: {pythonFromPath}");
+                return pythonFromPath;
+            }
+
+            // If all else fails, return embedded path (will fail validation, but gives clear error message)
+            return embeddedPython;
+        }
+
+        /// <summary>
+        /// Try to find Python on the system PATH.
+        /// </summary>
+        private static string FindPythonOnPath()
+        {
+            try
+            {
+                var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "where",
+                        Arguments = "python.exe",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        CreateNoWindow = true
+                    }
+                };
+
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+
+                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                {
+                    // Return the first Python found
+                    string firstPath = output.Split('\n')[0].Trim();
+                    if (File.Exists(firstPath))
+                    {
+                        return firstPath;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error finding Python on PATH: {ex.Message}");
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -223,13 +315,18 @@ namespace UTPS_Addin
             try
             {
                 string addInFolder = Path.GetDirectoryName(typeof(PythonRunner).Assembly.Location);
-                string pythonExePath = Path.Combine(addInFolder, "python_embed", "python.exe");
+                string pythonExePath = FindPythonExecutable();
                 string scriptPath = Path.Combine(addInFolder, "scripts", "traffic_loader_wrapper.py");
 
                 if (!File.Exists(pythonExePath))
                 {
-                    errorMessage = $"Embedded Python not found. Expected at:\n{pythonExePath}\n\n" +
-                                   "Please ensure the python_embed folder is included with the add-in.";
+                    errorMessage = $"Python executable not found.\n\n" +
+                                   $"Searched locations:\n" +
+                                   $"• Embedded Python: {Path.Combine(addInFolder, "python_embed", "python.exe")}\n" +
+                                   $"• System Python (C:\\Python3xx\\python.exe)\n" +
+                                   $"• User Python (AppData\\Local\\Programs\\Python)\n" +
+                                   $"• Python on PATH\n\n" +
+                                   $"Please install Python 3.10+ or include python_embed folder with the add-in.";
                     return false;
                 }
 
