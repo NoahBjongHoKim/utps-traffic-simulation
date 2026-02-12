@@ -200,34 +200,23 @@ namespace UTPS_Addin
                     {
                         try
                         {
-                            // GPKG with specific feature class: path + "/" + feature_class_name
-                            // For GPKG files, the feature class is typically "main.table_name"
-                            string gpkgPath = config.GpkgFilePath;
+                            System.Diagnostics.Debug.WriteLine($"Adding GPKG: {config.GpkgFilePath}");
 
-                            // Try with the specific feature class name first
-                            Uri gpkgUriWithLayer = new Uri(gpkgPath + "/main.clipped_single");
+                            // Use Geoprocessing tool to add the layer (more reliable for GPKG)
+                            var gpkgParams = Geoprocessing.MakeValueArray(config.GpkgFilePath);
+                            var gpkgResult = Geoprocessing.ExecuteToolAsync(
+                                "management.MakeFeatureLayer",
+                                gpkgParams
+                            ).Result;
 
-                            try
+                            if (!gpkgResult.IsFailed)
                             {
-                                Layer networkLayer = LayerFactory.Instance.CreateLayer(gpkgUriWithLayer, map);
-                                if (networkLayer != null)
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"Road network layer added: {networkLayer.Name}");
-                                    networkAdded = true;
-                                }
+                                System.Diagnostics.Debug.WriteLine("Road network layer added successfully");
+                                networkAdded = true;
                             }
-                            catch
+                            else
                             {
-                                // If that fails, try without specifying the layer (will use first available)
-                                System.Diagnostics.Debug.WriteLine("Trying to add GPKG without specifying layer name...");
-                                Uri gpkgUri = new Uri(gpkgPath);
-                                Layer networkLayer = LayerFactory.Instance.CreateLayer(gpkgUri, map);
-
-                                if (networkLayer != null)
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"Road network layer added: {networkLayer.Name}");
-                                    networkAdded = true;
-                                }
+                                System.Diagnostics.Debug.WriteLine($"Failed to add GPKG: {string.Join(", ", gpkgResult.ErrorMessages)}");
                             }
                         }
                         catch (Exception ex)
@@ -242,43 +231,31 @@ namespace UTPS_Addin
                     {
                         try
                         {
-                            // APPROACH: Create XY Event Layer from Parquet table
-                            // Step 1: Add Parquet as a standalone table
-                            System.Diagnostics.Debug.WriteLine($"Adding Parquet table: {parquetPath}");
-                            Uri parquetUri = new Uri(parquetPath);
-                            StandaloneTable table = StandaloneTableFactory.Instance.CreateStandaloneTable(parquetUri, map);
+                            System.Diagnostics.Debug.WriteLine($"Creating XY Event Layer from Parquet: {parquetPath}");
 
-                            if (table != null)
+                            // Create XY Event Layer directly using geoprocessing tool
+                            // The Parquet has columns: x, y, timestamp, angle, person_id, interval_id, travelling_speed, freespeed, s
+                            var parameters = Geoprocessing.MakeValueArray(
+                                parquetPath,             // Input table (file path)
+                                "x",                     // X Field
+                                "y",                     // Y Field
+                                "Traffic Events",        // Output layer name
+                                ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326) // WGS84
+                            );
+
+                            var gpResult = Geoprocessing.ExecuteToolAsync(
+                                "management.MakeXYEventLayer",
+                                parameters
+                            ).Result;
+
+                            if (gpResult.IsFailed)
                             {
-                                System.Diagnostics.Debug.WriteLine($"Parquet table added: {table.Name}");
-
-                                // Step 2: Create XY Event Layer using geoprocessing tool
-                                // The Parquet has columns: x, y, timestamp, angle, person_id, interval_id, travelling_speed, freespeed, s
-                                var parameters = Geoprocessing.MakeValueArray(
-                                    table.Name,              // Input table
-                                    "x",                     // X Field
-                                    "y",                     // Y Field
-                                    "Traffic Events",        // Output layer name
-                                    ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326) // WGS84
-                                );
-
-                                var gpResult = Geoprocessing.ExecuteToolAsync(
-                                    "management.MakeXYEventLayer",
-                                    parameters
-                                ).Result;
-
-                                if (gpResult.IsFailed)
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"Failed to create XY event layer: {string.Join(", ", gpResult.ErrorMessages)}");
-                                }
-                                else
-                                {
-                                    System.Diagnostics.Debug.WriteLine("XY Event Layer created successfully");
-                                    eventsAdded = true;
-
-                                    // Remove the standalone table since we now have the layer
-                                    map.RemoveStandaloneTable(table);
-                                }
+                                System.Diagnostics.Debug.WriteLine($"Failed to create XY event layer: {string.Join(", ", gpResult.ErrorMessages)}");
+                            }
+                            else
+                            {
+                                System.Diagnostics.Debug.WriteLine("XY Event Layer created successfully");
+                                eventsAdded = true;
                             }
                         }
                         catch (Exception ex)
