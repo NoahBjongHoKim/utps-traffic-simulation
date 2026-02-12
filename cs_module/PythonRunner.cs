@@ -215,6 +215,13 @@ namespace UTPS_Addin
                 }
             };
 
+            // Clear ArcGIS Pro's Python environment variables to use system Python
+            // This prevents ArcGIS from hijacking the Python environment
+            _process.StartInfo.EnvironmentVariables.Remove("PYTHONPATH");
+            _process.StartInfo.EnvironmentVariables.Remove("PYTHONHOME");
+            _process.StartInfo.EnvironmentVariables.Remove("CONDA_DEFAULT_ENV");
+            _process.StartInfo.EnvironmentVariables.Remove("CONDA_PREFIX");
+
             // Wire up output handlers
             _process.OutputDataReceived += OnOutputDataReceived;
             _process.ErrorDataReceived += OnErrorDataReceived;

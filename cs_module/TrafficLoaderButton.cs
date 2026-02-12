@@ -3,7 +3,7 @@ using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
 using ArcGIS.Desktop.Catalog;
 using ArcGIS.Core.Data;
-using ArcGIS.Core.Geoprocessing;
+using ArcGIS.Desktop.Core.Geoprocessing;
 using System;
 using System.IO;
 using System.Threading.Tasks;
