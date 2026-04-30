@@ -37,6 +37,7 @@ import multiprocessing as mp
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 from shapely.geometry import Point
@@ -89,22 +90,52 @@ def load_network_with_cache(gpkg_path):
 
 
 def time_to_timestamp(seconds):
-    """Convert seconds since midnight to formatted timestamp string.
+    """Convert seconds since midnight to ISO 8601 timestamp string with millisecond precision.
 
     Args:
-        seconds: Seconds since midnight (e.g., 28800 for 8:00 AM)
+        seconds: Seconds since midnight, may be fractional (e.g., 28800.1 for 8:00:00.100 AM)
 
     Returns:
-        Formatted timestamp string in 'YYYY/MM/DD HH:MM:SS' format
+        ISO 8601 timestamp string with millisecond precision (e.g., '2024-01-01T08:00:00.100')
 
     Example:
         >>> time_to_timestamp(28800)
-        '2024/01/01 08:00:00'
-        >>> time_to_timestamp(64800)
-        '2024/01/01 18:00:00'
+        '2024-01-01T08:00:00.000'
+        >>> time_to_timestamp(64800.5)
+        '2024-01-01T18:00:00.500'
     """
     base = datetime(2024, 1, 1)
-    return (base + timedelta(seconds=int(seconds))).strftime('%Y/%m/%d %H:%M:%S')
+    return (base + timedelta(seconds=float(seconds))).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]  # millisecond precision
+
+
+def compute_speed_level(s):
+    """Map relative speed (s = travelling_speed / freespeed) to a discrete 0–15 level.
+
+    Used for symbolization in ArcGIS: level 0 = stopped (red), levels 1–9 = congested
+    (red→orange gradient), level 10 = free flow (yellow-green), levels 11–14 = above
+    speed limit, level 15 = well above limit (dark green).
+
+    Args:
+        s: Relative speed ratio (travelling_speed / freespeed). None or ≤ 0 → level 0.
+
+    Returns:
+        Integer speed level 0–15.
+
+    Example:
+        >>> compute_speed_level(0.0)
+        0
+        >>> compute_speed_level(0.95)
+        10
+        >>> compute_speed_level(1.5)
+        15
+    """
+    if s is None or s <= 0.0:
+        return 0
+    thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4]
+    for level, t in enumerate(thresholds, start=1):
+        if s <= t:
+            return level
+    return 15
 
 
 def calculate_bearing(start_coords, end_coords):
@@ -270,12 +301,12 @@ def get_travel_endpoints(link_id, link_attrs):
 def interpolate_trajectory(link_id, time_enter, time_leave,
                           start_coords, end_coords, person_id,
                           freespeed, link_length, bearing, interval_id, travelling_speed,
-                          snapshot_mode=False):
-    """Interpolate trajectory points along a link with 1-second time resolution.
+                          snapshot_mode=False, fps=1):
+    """Interpolate trajectory points along a link at configurable frame rate.
 
     Performs linear interpolation between start and end coordinates to create
-    a smooth animated trajectory. Generates one point per second with associated
-    temporal and spatial attributes.
+    a smooth animated trajectory. Generates one point per frame (1/fps seconds)
+    with associated temporal and spatial attributes.
 
     Args:
         link_id: ID of the link being traversed
@@ -290,10 +321,12 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
         interval_id: Time interval identifier
         travelling_speed: Actual travelling speed (m/s) = link_length / time_spent
         snapshot_mode: If True, output only 1 point at time_enter (default: False)
+        fps: Frames per second for interpolation (default: 1). Use e.g. 10 for
+             0.1s resolution, which produces smoother ArcGIS Time Slider animation.
 
     Returns:
         List of GeoJSON feature dictionaries. In snapshot_mode, returns a single point
-        at the starting position. Otherwise returns one point per second of travel.
+        at the starting position. Otherwise returns one point per frame of travel.
         Returns empty list if time_delta < 0.
 
     Note:
@@ -312,6 +345,10 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
     else:
         relative_velocity = None
 
+    # Pre-compute fields shared across all code paths
+    s_rounded = round(relative_velocity, 3) if relative_velocity is not None else None
+    speed_lvl = compute_speed_level(relative_velocity)
+
     # Snapshot mode: return single point at start position, but keep correct speed
     if snapshot_mode:
         feature = {
@@ -321,12 +358,14 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
             },
             "properties": {
                 "timestamp": time_to_timestamp(time_enter),
+                "timestamp_dt": time_to_timestamp(time_enter),
                 "angle": bearing,
                 "person_id": person_id,
                 "interval_id": interval_id,
                 "travelling_speed": round(travelling_speed, 3),
                 "freespeed": round(freespeed, 3) if freespeed is not None else None,
-                "s": round(relative_velocity, 3) if relative_velocity is not None else None
+                "s": s_rounded,
+                "speed_level": speed_lvl,
             }
         }
         return [feature]
@@ -340,19 +379,23 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
             },
             "properties": {
                 "timestamp": time_to_timestamp(time_enter),
+                "timestamp_dt": time_to_timestamp(time_enter),
                 "angle": bearing,
                 "person_id": person_id,
                 "interval_id": interval_id,
                 "travelling_speed": round(travelling_speed, 3),
                 "freespeed": round(freespeed, 3) if freespeed is not None else None,
-                "s": round(relative_velocity, 3) if relative_velocity is not None else None
+                "s": s_rounded,
+                "speed_level": speed_lvl,
             }
         }
         return [feature]
 
-    # Regular interpolation for time_delta > 0
+    # Sub-second interpolation: step size in seconds (e.g. 0.1s for fps=10)
+    step = 1.0 / fps
     features = []
-    for t in range(time_delta + 1):
+    t = 0.0
+    while t <= time_delta + 1e-9:  # small epsilon to include the final frame
         fraction = t / time_delta
         x = round(start_coords[0] + fraction * (end_coords[0] - start_coords[0]), 12)
         y = round(start_coords[1] + fraction * (end_coords[1] - start_coords[1]), 12)
@@ -364,15 +407,18 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
             },
             "properties": {
                 "timestamp": time_to_timestamp(time_enter + t),
+                "timestamp_dt": time_to_timestamp(time_enter + t),
                 "angle": bearing,
                 "person_id": person_id,
                 "interval_id": interval_id,
                 "travelling_speed": round(travelling_speed, 3),
                 "freespeed": round(freespeed, 3) if freespeed is not None else None,
-                "s": round(relative_velocity, 3) if relative_velocity is not None else None
+                "s": s_rounded,
+                "speed_level": speed_lvl,
             }
         }
         features.append(feature)
+        t += step
 
     return features
 
@@ -402,7 +448,7 @@ def process_parquet_chunk(args):
         cause processing to fail. This handles cases where events reference
         links outside the loaded network boundaries.
     """
-    chunk_df, link_attrs, snapshot_mode = args
+    chunk_df, link_attrs, snapshot_mode, fps = args
 
     all_features = []
     links_not_found = set()
@@ -448,7 +494,8 @@ def process_parquet_chunk(args):
                 bearing,
                 row['interval_id'],  # Pass interval_id through
                 travelling_speed,
-                snapshot_mode=snapshot_mode
+                snapshot_mode=snapshot_mode,
+                fps=fps
             )
 
             all_features.extend(features)
@@ -465,7 +512,8 @@ def process_parquet_chunk(args):
 
 def parquet_to_export(parquet_input, link_attrs, output_base,
                        output_formats, num_workers, chunk_size,
-                       gpkg_network=None, snapshot_mode=False):
+                       gpkg_network=None, snapshot_mode=False,
+                       fps=1, num_chunks=1):
     """Main function to convert Parquet to multiple output formats with interpolation.
 
     Args:
@@ -477,6 +525,11 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
         chunk_size: Chunk size for processing
         gpkg_network: Path to GeoPackage (optional, for standalone use)
         snapshot_mode: If True, output only 1 point per vehicle at snapshot time
+        fps: Frames per second for sub-second interpolation (default: 1). Use e.g. 10
+             for 0.1s resolution to smooth ArcGIS Time Slider animation.
+        num_chunks: Number of time-split output files to produce (default: 1). When > 1,
+                    output is split evenly by timestamp into separate files for ArcGIS
+                    performance (e.g. 4 Feature Classes instead of one large layer).
     """
 
     # Load network if not provided (for standalone use)
@@ -509,117 +562,117 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
     # Process in chunks using multiprocessing
     logger.info("Creating trajectory features with interpolation...")
 
-    # Open all output writers
-    writers = {}
+    # Always collect all features in memory so we can sort + chunk-split afterwards
+    all_rows = []
 
     try:
-        # GeoJSON writer
-        if 'geojson' in output_formats:
-            writers['geojson'] = open(output_paths['geojson'], 'w')
-            writers['geojson'].write('{"type": "FeatureCollection", "features": [\n')
-            writers['geojson_first'] = True
-
-        # CSV writer
-        if 'csv' in output_formats:
-            csv_file = open(output_paths['csv'], 'w', newline='')
-            csv_writer = csv_module.writer(csv_file)
-            csv_writer.writerow(['x', 'y', 'timestamp', 'angle', 'person_id', 'interval_id', 'travelling_speed', 'freespeed', 's'])  # Header
-            writers['csv'] = csv_file
-            writers['csv_writer'] = csv_writer
-
-        # Parquet/GeoParquet - collect all features first
-        if 'parquet' in output_formats or 'geoparquet' in output_formats:
-            writers['features_list'] = []
-
         processed = 0
         batches_processed = 0
 
-        # Create iterator of (df, link_attrs, snapshot_mode) tuples for all batches
+        # Create iterator of (df, link_attrs, snapshot_mode, fps) tuples for all batches
         def batch_generator():
             for batch in parquet_file.iter_batches(batch_size=chunk_size):
                 df = batch.to_pandas()
-                yield (df, link_attrs, snapshot_mode)
+                yield (df, link_attrs, snapshot_mode, fps)
 
         # Process batches in parallel using the pool
         for features in pool.imap_unordered(process_parquet_chunk, batch_generator()):
-            # Write features to all formats
             for feature in features:
                 props = feature['properties']
                 coords = feature['geometry']['coordinates']
+                all_rows.append({
+                    'x': coords[0],
+                    'y': coords[1],
+                    'timestamp': props['timestamp'],
+                    'timestamp_dt': props['timestamp_dt'],
+                    'angle': props['angle'],
+                    'person_id': props['person_id'],
+                    'interval_id': props['interval_id'],
+                    'travelling_speed': props['travelling_speed'],
+                    'freespeed': props['freespeed'],
+                    's': props['s'],
+                    'speed_level': props['speed_level'],
+                    '_feature': feature,  # keep original for GeoJSON writes
+                })
 
-                # GeoJSON
-                if 'geojson' in output_formats:
-                    if not writers['geojson_first']:
-                        writers['geojson'].write(',\n')
-                    json.dump(feature, writers['geojson'])
-                    writers['geojson_first'] = False
-
-                # CSV
-                if 'csv' in output_formats:
-                    writers['csv_writer'].writerow([
-                        coords[0], coords[1],  # x, y
-                        props['timestamp'], props['angle'], props['person_id'],
-                        props['interval_id'], props['travelling_speed'], props['freespeed'], props['s']
-                    ])
-
-                # Collect for Parquet/GeoParquet
-                if 'parquet' in output_formats or 'geoparquet' in output_formats:
-                    writers['features_list'].append({
-                        'x': coords[0],
-                        'y': coords[1],
-                        'timestamp': props['timestamp'],
-                        'angle': props['angle'],
-                        'person_id': props['person_id'],
-                        'interval_id': props['interval_id'],
-                        'travelling_speed': props['travelling_speed'],
-                        'freespeed': props['freespeed'],
-                        's': props['s']
-                    })
-
-            processed += chunk_size  # Approximate (last batch may be smaller)
+            processed += chunk_size
             batches_processed += 1
 
-            # Log progress every 10 batches
             if batches_processed % 10 == 0:
                 progress = min(100, (processed / total_rows) * 100)
                 logger.info(f"Progress: {min(processed, total_rows):,}/{total_rows:,} events ({progress:.1f}%)")
 
-        # Close GeoJSON
-        if 'geojson' in output_formats:
-            writers['geojson'].write('\n]}')
-            writers['geojson'].close()
-            logger.success(f"GeoJSON created: {output_paths['geojson']}")
-
-        # Close CSV
-        if 'csv' in output_formats:
-            writers['csv'].close()
-            logger.success(f"CSV created: {output_paths['csv']}")
-
-        # Write Parquet
-        if 'parquet' in output_formats:
-            df_out = pd.DataFrame(writers['features_list'])
-            df_out.to_parquet(output_paths['parquet'], index=False)
-            logger.success(f"Parquet created: {output_paths['parquet']}")
-
-        # Write GeoParquet
-        if 'geoparquet' in output_formats:
-            df_out = pd.DataFrame(writers['features_list'])
-            # Create geometry from x, y
-            geometry = [Point(row['x'], row['y']) for _, row in df_out.iterrows()]
-            gdf_out = gpd.GeoDataFrame(df_out.drop(columns=['x', 'y']), geometry=geometry, crs='EPSG:4326')
-            gdf_out.to_parquet(output_paths['geoparquet'])
-            logger.success(f"GeoParquet created: {output_paths['geoparquet']}")
-
     finally:
-        # Clean up any open file handles
-        for key, val in writers.items():
-            if hasattr(val, 'close'):
-                try:
-                    val.close()
-                except:
-                    pass
         pool.close()
         pool.join()
+
+    logger.info(f"Total features generated: {len(all_rows):,}")
+
+    # Sort by timestamp so chunk splits are contiguous time ranges
+    all_rows.sort(key=lambda r: r['timestamp'])
+
+    # Determine chunk boundaries — split unique timestamps evenly across num_chunks
+    unique_ts = sorted(set(r['timestamp'] for r in all_rows))
+    ts_chunks = [set(c) for c in np.array_split(unique_ts, num_chunks)] if num_chunks > 1 else [None]
+
+    def _write_chunk(rows, suffix):
+        """Write one set of output files for a given row subset."""
+        base = f"{output_base}{suffix}"
+
+        if 'geojson' in output_formats:
+            path = f"{base}.geojson"
+            with open(path, 'w') as f:
+                f.write('{"type": "FeatureCollection", "features": [\n')
+                first = True
+                for r in rows:
+                    if not first:
+                        f.write(',\n')
+                    json.dump(r['_feature'], f)
+                    first = False
+                f.write('\n]}')
+            logger.success(f"GeoJSON created: {path}")
+
+        if 'csv' in output_formats:
+            path = f"{base}.csv"
+            with open(path, 'w', newline='') as f:
+                writer = csv_module.writer(f)
+                writer.writerow(['x', 'y', 'timestamp', 'timestamp_dt', 'angle', 'person_id',
+                                  'interval_id', 'travelling_speed', 'freespeed', 's', 'speed_level'])
+                for r in rows:
+                    writer.writerow([r['x'], r['y'], r['timestamp'], r['timestamp_dt'], r['angle'],
+                                     r['person_id'], r['interval_id'],
+                                     r['travelling_speed'], r['freespeed'], r['s'], r['speed_level']])
+            logger.success(f"CSV created: {path}")
+
+        if 'parquet' in output_formats:
+            path = f"{base}.parquet"
+            df_out = pd.DataFrame([{k: v for k, v in r.items() if k != '_feature'} for r in rows])
+            # Cast timestamp_dt to proper datetime so ArcGIS reads it as a Date field (not String)
+            df_out['timestamp_dt'] = pd.to_datetime(df_out['timestamp_dt']).dt.tz_localize('UTC')
+            df_out['speed_level'] = df_out['speed_level'].astype('int8')
+            df_out.to_parquet(path, index=False)
+            logger.success(f"Parquet created: {path}")
+
+        if 'geoparquet' in output_formats:
+            path = f"{base}.geoparquet"
+            df_out = pd.DataFrame([{k: v for k, v in r.items() if k != '_feature'} for r in rows])
+            df_out['timestamp_dt'] = pd.to_datetime(df_out['timestamp_dt']).dt.tz_localize('UTC')
+            df_out['speed_level'] = df_out['speed_level'].astype('int8')
+            geometry = [Point(r['x'], r['y']) for r in rows]
+            gdf_out = gpd.GeoDataFrame(df_out.drop(columns=['x', 'y']), geometry=geometry, crs='EPSG:4326')
+            gdf_out.to_parquet(path)
+            logger.success(f"GeoParquet created: {path}")
+
+    if num_chunks <= 1:
+        # Single output — no suffix
+        _write_chunk(all_rows, '')
+    else:
+        logger.info(f"Splitting output into {num_chunks} time-based chunks for ArcGIS performance...")
+        for i, ts_set in enumerate(ts_chunks, start=1):
+            subset = [r for r in all_rows if r['timestamp'] in ts_set]
+            suffix = f"_chunk{i}"
+            logger.info(f"  Chunk {i}: {len(subset):,} features ({len(ts_set)} unique timestamps)")
+            _write_chunk(subset, suffix)
 
 
 if __name__ == "__main__":

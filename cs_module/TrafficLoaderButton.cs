@@ -91,8 +91,14 @@ namespace UTPS_Addin
         {
             try
             {
+                // Reset animation state for this new run
+                AnimationState.Reset();
+
                 // Create Python runner
                 var runner = new PythonRunner();
+
+                // Build optional bbox argument from study area if one was set
+                string extraArgs = BuildExtraArgs();
 
                 // Create and show progress dialog
                 var progressDialog = new ProgressDialog
@@ -110,7 +116,8 @@ namespace UTPS_Addin
                             config.GpkgFilePath,
                             config.StartTime,
                             config.EndTime,
-                            config.OutputPath
+                            config.OutputPath,
+                            extraArgs
                         );
 
                         // Wait for completion
@@ -164,7 +171,31 @@ namespace UTPS_Addin
         }
 
         /// <summary>
+        /// Build optional extra CLI arguments for the Python wrapper.
+        /// Appends --bbox if a study area was set in AnimationState.
+        /// </summary>
+        private static string BuildExtraArgs()
+        {
+            var args = new System.Text.StringBuilder();
+
+            if (AnimationState.BboxFilter != null)
+            {
+                var bb = AnimationState.BboxFilter;
+                // Format with invariant culture to avoid locale-specific decimal separators
+                args.Append(FormattableString.Invariant(
+                    $"--bbox {bb.XMin:F6} {bb.YMin:F6} {bb.XMax:F6} {bb.YMax:F6}"));
+            }
+
+            return args.ToString();
+        }
+
+        /// <summary>
         /// Add road network and event points layers to the active map.
+        /// After Python outputs a Parquet file, this method chains geoprocessing calls to:
+        ///   1. Create a File Geodatabase (if it doesn't exist)
+        ///   2. Convert Parquet → in-memory XY feature class
+        ///   3. Copy into the GDB as a permanent Feature Class (enables Time Slider)
+        ///   4. Add the Feature Class layer to the active map
         /// Uses QueuedTask.Run() internally for thread-safe ArcGIS operations.
         /// </summary>
         private async Task AddLayersToMap(TrafficConfigViewModel config)
@@ -185,182 +216,152 @@ namespace UTPS_Addin
 
                 System.Diagnostics.Debug.WriteLine("Adding layers to map...");
 
-                // Track which layers were successfully added
-                bool networkAdded = false;
-                bool eventsAdded = false;
                 string parquetPath = config.OutputPath + ".parquet";
+                string outputDir   = Path.GetDirectoryName(config.OutputPath) ?? ".";
+                string gdbName     = "traffic_output";
+                string gdbPath     = Path.Combine(outputDir, gdbName + ".gdb");
+                string fcName      = "TrafficEvents";
+                string fcFullPath  = Path.Combine(gdbPath, fcName);
 
-                // Add layers within QueuedTask (required for ArcGIS Pro SDK)
-                await QueuedTask.Run(() =>
+                bool networkAdded = false;
+                bool eventsAdded  = false;
+
+                await QueuedTask.Run(async () =>
                 {
                     Map map = MapView.Active.Map;
 
-                    // 1. Add Road Network Layer (GPKG)
+                    // ── 1. Road Network (GPKG) ───────────────────────────────────────
                     if (File.Exists(config.GpkgFilePath))
                     {
                         try
                         {
                             System.Diagnostics.Debug.WriteLine($"Adding GPKG: {config.GpkgFilePath}");
-
-                            // Use Geoprocessing tool to add the layer (more reliable for GPKG)
-                            var gpkgParams = Geoprocessing.MakeValueArray(config.GpkgFilePath);
-                            var gpkgResult = Geoprocessing.ExecuteToolAsync(
+                            var gpkgResult = await Geoprocessing.ExecuteToolAsync(
                                 "management.MakeFeatureLayer",
-                                gpkgParams
-                            ).Result;
-
-                            if (!gpkgResult.IsFailed)
-                            {
-                                System.Diagnostics.Debug.WriteLine("Road network layer added successfully");
-                                networkAdded = true;
-                            }
-                            else
-                            {
+                                Geoprocessing.MakeValueArray(config.GpkgFilePath));
+                            networkAdded = !gpkgResult.IsFailed;
+                            if (!networkAdded)
                                 System.Diagnostics.Debug.WriteLine($"Failed to add GPKG: {string.Join(", ", gpkgResult.ErrorMessages)}");
-                            }
                         }
                         catch (Exception ex)
                         {
                             System.Diagnostics.Debug.WriteLine($"Error adding road network layer: {ex.Message}");
-                            System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
                         }
                     }
 
-                    // 2. Add Event Points Layer from Parquet (using XY Event Layer)
-                    if (File.Exists(parquetPath))
+                    // ── 2. Traffic Events → File Geodatabase Feature Class ───────────
+                    if (!File.Exists(parquetPath))
                     {
-                        try
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Creating XY Event Layer from Parquet: {parquetPath}");
-
-                            // Create XY Event Layer directly using geoprocessing tool
-                            // The Parquet has columns: x, y, timestamp, angle, person_id, interval_id, travelling_speed, freespeed, s
-                            var parameters = Geoprocessing.MakeValueArray(
-                                parquetPath,             // Input table (file path)
-                                "x",                     // X Field
-                                "y",                     // Y Field
-                                "Traffic Events",        // Output layer name
-                                ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326) // WGS84
-                            );
-
-                            var gpResult = Geoprocessing.ExecuteToolAsync(
-                                "management.MakeXYEventLayer",
-                                parameters
-                            ).Result;
-
-                            if (gpResult.IsFailed)
-                            {
-                                System.Diagnostics.Debug.WriteLine($"Failed to create XY event layer: {string.Join(", ", gpResult.ErrorMessages)}");
-                            }
-                            else
-                            {
-                                System.Diagnostics.Debug.WriteLine("XY Event Layer created successfully");
-                                eventsAdded = true;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Error adding event points layer from Parquet: {ex.Message}");
-                            System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
-                        }
+                        System.Diagnostics.Debug.WriteLine($"Parquet file not found: {parquetPath}");
+                        return;
                     }
-                    else
+
+                    try
                     {
-                        System.Diagnostics.Debug.WriteLine($"Parquet file not found at: {parquetPath}");
+                        // Step A: Create GDB if it doesn't exist
+                        if (!Directory.Exists(gdbPath))
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Creating File Geodatabase: {gdbPath}");
+                            var createGdbResult = await Geoprocessing.ExecuteToolAsync(
+                                "management.CreateFileGDB",
+                                Geoprocessing.MakeValueArray(outputDir, gdbName));
+                            if (createGdbResult.IsFailed)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"Failed to create GDB: {string.Join(", ", createGdbResult.ErrorMessages)}");
+                                return;
+                            }
+                        }
+
+                        // Step B: Parquet → in-memory XY feature class
+                        System.Diagnostics.Debug.WriteLine("Converting Parquet → XY feature class...");
+                        string tempFc = @"memory\traffic_tmp";
+                        var xyResult = await Geoprocessing.ExecuteToolAsync(
+                            "management.XYTableToPoint",
+                            Geoprocessing.MakeValueArray(
+                                parquetPath,   // Input table
+                                tempFc,        // Output feature class
+                                "x",           // X field
+                                "y",           // Y field
+                                "",            // Z field (none)
+                                ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326)));
+                        if (xyResult.IsFailed)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"XYTableToPoint failed: {string.Join(", ", xyResult.ErrorMessages)}");
+                            return;
+                        }
+
+                        // Step C: Copy from memory → GDB (creates a proper permanent Feature Class)
+                        System.Diagnostics.Debug.WriteLine($"Copying to GDB: {fcFullPath}");
+                        var copyResult = await Geoprocessing.ExecuteToolAsync(
+                            "management.CopyFeatures",
+                            Geoprocessing.MakeValueArray(tempFc, fcFullPath));
+                        if (copyResult.IsFailed)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"CopyFeatures failed: {string.Join(", ", copyResult.ErrorMessages)}");
+                            return;
+                        }
+
+                        // Step D: Add Feature Class layer to map
+                        System.Diagnostics.Debug.WriteLine("Adding GDB Feature Class to map...");
+                        var layer = LayerFactory.Instance.CreateLayer(
+                            new Uri(fcFullPath), map, layerName: "Traffic Events") as FeatureLayer;
+
+                        eventsAdded = layer != null;
+
+                        // Store in AnimationState for downstream buttons
+                        AnimationState.OutputGdbPath = gdbPath;
+                        AnimationState.TrafficFeatureClassName = fcName;
+                        AnimationState.TrafficLayer = layer;
+
+                        System.Diagnostics.Debug.WriteLine($"Feature Class layer added: {eventsAdded}");
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Error writing to GDB: {ex.Message}\n{ex.StackTrace}");
                     }
                 });
 
-                // Show appropriate success/error message based on what was added
-                if (networkAdded && eventsAdded)
+                // ── Result message ────────────────────────────────────────────────
+                string studyAreaNote = AnimationState.BboxFilter != null
+                    ? $"\nStudy area filter was applied (bbox)."
+                    : "";
+
+                if (eventsAdded)
                 {
                     ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
                         "Traffic data loaded successfully!\n\n" +
                         "Layers added:\n" +
-                        "• Road Network\n" +
-                        "• Traffic Events (XY Event Layer)\n\n" +
-                        $"Time range: {config.StartTime} - {config.EndTime}",
+                        (networkAdded ? "• Road Network\n" : "") +
+                        "• Traffic Events (Feature Class in GDB — Time Slider ready)\n\n" +
+                        $"GDB: {gdbPath}\n" +
+                        $"Feature Class: {fcName}\n" +
+                        $"Time range: {config.StartTime} – {config.EndTime}" +
+                        studyAreaNote,
                         "Success",
                         System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Information
-                    );
-                }
-                else if (!networkAdded && !eventsAdded)
-                {
-                    // Show detailed instructions for manual layer addition
-                    string instructions =
-                        "Processing completed successfully! ✓\n\n" +
-                        "The output files have been created, but automatic layer addition failed.\n" +
-                        "You can add them manually:\n\n" +
-                        "HOW TO ADD LAYERS MANUALLY:\n" +
-                        "──────────────────────────\n" +
-                        "1. Road Network (GPKG):\n" +
-                        "   • Map tab → Add Data\n" +
-                        $"   • Browse to: {config.GpkgFilePath}\n\n" +
-                        "2. Traffic Events (Parquet table → XY Event Layer):\n" +
-                        "   • Map tab → Add Data\n" +
-                        $"   • Browse to: {parquetPath}\n" +
-                        "   • Right-click table → Display XY Data\n" +
-                        "   • X Field: x, Y Field: y\n" +
-                        "   • Coordinate System: WGS84 (EPSG:4326)\n\n" +
-                        $"Time range processed: {config.StartTime} - {config.EndTime}\n\n" +
-                        "TIP: Windows Explorer will open to the output folder.";
-
-                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
-                        instructions,
-                        "Manual Layer Addition Required",
-                        System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Information
-                    );
-
-                    // Also open the output folder in Windows Explorer to help the user
-                    try
-                    {
-                        string outputFolder = Path.GetDirectoryName(parquetPath);
-                        if (Directory.Exists(outputFolder))
-                        {
-                            System.Diagnostics.Process.Start("explorer.exe", outputFolder);
-                        }
-                    }
-                    catch
-                    {
-                        // Ignore errors opening explorer
-                    }
+                        System.Windows.MessageBoxImage.Information);
                 }
                 else
                 {
-                    // Partial success
-                    string addedLayers = "";
-                    string manualLayers = "";
-
-                    if (networkAdded)
-                        addedLayers += "• Road Network\n";
-                    else
-                        manualLayers += $"Road Network (GPKG):\n  {config.GpkgFilePath}\n\n";
-
-                    if (eventsAdded)
-                        addedLayers += "• Traffic Events\n";
-                    else
-                        manualLayers += $"Traffic Events (Parquet):\n  {parquetPath}\n  (Use Display XY Data: x field, y field, WGS84)\n\n";
-
+                    // Fallback instructions
                     ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
-                        $"Processing completed!\n\n" +
-                        $"AUTOMATICALLY ADDED:\n{addedLayers}\n" +
-                        $"PLEASE ADD MANUALLY:\n{manualLayers}" +
-                        $"Use Map → Add Data in ArcGIS Pro.\n\n" +
-                        $"Time range: {config.StartTime} - {config.EndTime}",
-                        "Partial Success - Manual Action Needed",
+                        "Processing completed, but automatic layer addition failed.\n\n" +
+                        "You can add layers manually:\n\n" +
+                        "1. Traffic Events (GDB Feature Class):\n" +
+                        $"   Catalog → {gdbPath} → {fcName}\n" +
+                        "   Drag to map, then enable time on 'timestamp_dt' field.\n\n" +
+                        "2. Road Network:\n" +
+                        $"   Map → Add Data → {config.GpkgFilePath}\n\n" +
+                        $"Time range: {config.StartTime} – {config.EndTime}" +
+                        studyAreaNote,
+                        "Manual Steps Required",
                         System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Information
-                    );
+                        System.Windows.MessageBoxImage.Warning);
 
-                    // Open output folder
                     try
                     {
-                        string outputFolder = Path.GetDirectoryName(parquetPath);
-                        if (Directory.Exists(outputFolder))
-                        {
-                            System.Diagnostics.Process.Start("explorer.exe", outputFolder);
-                        }
+                        if (Directory.Exists(outputDir))
+                            System.Diagnostics.Process.Start("explorer.exe", outputDir);
                     }
                     catch { }
                 }

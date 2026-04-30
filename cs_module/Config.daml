@@ -27,12 +27,12 @@
       </tabs>
               
       <groups>
-        <!-- comment this out if you have no controls on the Addin tab to avoid
-              an empty group-->
-        <group id="UTPS_Addin_Group1" caption="UTPS Tools" appearsOnAddInTab="true">
-          <!-- host controls within groups -->
+        <!-- Animation Workflow group — sequential steps for loading and animating traffic data -->
+        <group id="UTPS_Anim_Group" caption="Animation Workflow" appearsOnAddInTab="true">
+          <button refID="UTPS_Anim_SetStudyArea_Button" size="large"/>
           <button refID="UTPS_Addin_TrafficLoader_Button" size="large"/>
         </group>
+
         <group id="UTPS_Addin_Group2" caption="Test/Debug" appearsOnAddInTab="true">
           <!-- Test buttons for debugging -->
           <button refID="UTPS_Addin_TestParquet_Button" size="small"/>
@@ -41,7 +41,21 @@
       </groups>
 
       <controls>
-        <!-- add your controls here -->
+        <!-- Animation Workflow buttons -->
+        <button id="UTPS_Anim_SetStudyArea_Button" caption="1. Set Study Area"
+                className="DrawBboxButton" loadOnClick="true"
+                smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen16.png"
+                largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen32.png">
+          <tooltip heading="Set Study Area">
+            Captures the current map view extent as the spatial filter for data loading.
+            Zoom and pan the map to your area of interest, then click this button.
+            Only road links within this area will be processed — dramatically reducing
+            processing time for large simulation datasets.
+            <disabledText />
+          </tooltip>
+        </button>
+
+        <!-- Load Traffic Data button -->
         <button id="UTPS_Addin_TrafficLoader_Button" caption="Load Traffic Data"
                 className="TrafficLoaderButton" loadOnClick="true"
                 smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue16.png"
@@ -49,6 +63,8 @@
           <tooltip heading="Import Traffic Simulation">
             Load traffic simulation data from XML events file.
             Configure time range and output format for analysis.
+            If a study area was set, only events within that area are processed.
+            Output is written to a File Geodatabase for ArcGIS Time Slider support.
             <disabledText />
           </tooltip>
         </button>

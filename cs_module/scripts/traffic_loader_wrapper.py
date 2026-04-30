@@ -112,6 +112,9 @@ def run_pipeline(args):
     end_seconds = time_to_seconds(args.end_time)
     time_intervals = [(start_seconds, end_seconds)]
 
+    # Optional bbox
+    bbox = tuple(args.bbox) if args.bbox else None
+
     # Setup intermediate file path
     intermediate_parquet = args.output + "_intermediate.parquet"
 
@@ -120,8 +123,20 @@ def run_pipeline(args):
         print_progress("NETWORK", 15, "Loading road network...")
         network_df = load_network_cached(args.gpkg)
         link_attrs = build_link_attributes_dict(network_df, link_id_col='linkId', precompute_endpoints=True)
-        valid_links = set(link_attrs.keys())
-        print_progress("NETWORK", 25, f"Network loaded: {len(link_attrs):,} links")
+
+        # Apply bbox spatial filter if provided — restrict valid links to study area
+        if bbox:
+            from shapely.geometry import box as shapely_box
+            clip_geom = shapely_box(*bbox)
+            valid_links = set(
+                lid for lid, attrs in link_attrs.items()
+                if attrs.get('geometry') is not None and attrs['geometry'].intersects(clip_geom)
+            )
+            print_progress("NETWORK", 25, f"Network loaded: {len(link_attrs):,} total links, "
+                                          f"{len(valid_links):,} within bbox")
+        else:
+            valid_links = set(link_attrs.keys())
+            print_progress("NETWORK", 25, f"Network loaded: {len(link_attrs):,} links")
 
         # Stage 2: XML to Parquet
         print_progress("XML_PARSE", 30, "Starting XML parsing and filtering...")
@@ -131,7 +146,8 @@ def run_pipeline(args):
             parquet_output=intermediate_parquet,
             time_intervals=time_intervals,
             num_workers=args.workers,
-            chunk_size=args.chunk_size
+            chunk_size=args.chunk_size,
+            bbox=bbox,
         )
         print_progress("XML_PARSE", 60, "XML parsing complete")
 
@@ -144,7 +160,9 @@ def run_pipeline(args):
             output_formats=['parquet', 'geojson'],  # Parquet for internal use, GeoJSON for ArcGIS
             num_workers=args.workers,
             chunk_size=args.chunk_size,
-            snapshot_mode=True  # Output simple event points, not interpolated trajectories
+            snapshot_mode=True,  # Output simple event points, not interpolated trajectories
+            fps=args.fps,
+            num_chunks=args.num_chunks,
         )
         print_progress("EXPORT", 95, "Event point layers created")
 
@@ -195,6 +213,13 @@ def main():
                         help='Chunk size for processing (default: 100000)')
     parser.add_argument('--keep-intermediate', action='store_true',
                         help='Keep intermediate Parquet file')
+    parser.add_argument('--bbox', type=float, nargs=4,
+                        metavar=('XMIN', 'YMIN', 'XMAX', 'YMAX'),
+                        help='Spatial bounding box filter in WGS84 decimal degrees')
+    parser.add_argument('--fps', type=int, default=1,
+                        help='Frames per second for sub-second interpolation (default: 1)')
+    parser.add_argument('--num-chunks', type=int, default=1,
+                        help='Split output into N time-based files for ArcGIS performance (default: 1)')
 
     args = parser.parse_args()
 

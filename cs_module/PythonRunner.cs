@@ -184,7 +184,9 @@ namespace UTPS_Addin
         /// <summary>
         /// Run the traffic loader pipeline asynchronously.
         /// </summary>
-        public void RunPipeline(string xmlPath, string gpkgPath, string startTime, string endTime, string outputPath)
+        /// <param name="extraArgs">Optional additional CLI arguments appended verbatim (e.g. "--bbox 13.3 52.4 13.6 52.6")</param>
+        public void RunPipeline(string xmlPath, string gpkgPath, string startTime, string endTime, string outputPath,
+                                string extraArgs = null)
         {
             if (_process != null && !_process.HasExited)
             {
@@ -199,6 +201,10 @@ namespace UTPS_Addin
             arguments.Append($"--start-time \"{startTime}\" ");
             arguments.Append($"--end-time \"{endTime}\" ");
             arguments.Append($"--output \"{outputPath}\"");
+            if (!string.IsNullOrWhiteSpace(extraArgs))
+            {
+                arguments.Append($" {extraArgs}");
+            }
 
             // Setup process
             _process = new Process

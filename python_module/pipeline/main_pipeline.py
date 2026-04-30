@@ -118,8 +118,8 @@ class FilterConfig(BaseModel):
         duration_seconds=60, this generates snapshots every 5 minutes,
         each capturing 60 seconds of simulation time.
     """
-    start_time: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="Start time for snapshots (hh:mm)")
-    end_time: str = Field(..., pattern=r'^\d{2}:\d{2}$', description="End time for snapshots (hh:mm)")
+    start_time: str = Field(..., pattern=r'^\d{2}:\d{2}(:\d{2})?$', description="Start time for snapshots (hh:mm or hh:mm:ss)")
+    end_time: str = Field(..., pattern=r'^\d{2}:\d{2}(:\d{2})?$', description="End time for snapshots (hh:mm or hh:mm:ss)")
     frequency_seconds: int = Field(..., ge=1, description="Frequency between snapshots (seconds)")
     duration_seconds: int = Field(..., ge=0, description="Duration of each snapshot (seconds)")
 
@@ -127,9 +127,11 @@ class FilterConfig(BaseModel):
     @classmethod
     def validate_time_format(cls, v: str) -> str:
         """Validate time is within 24-hour format."""
-        hours, minutes = map(int, v.split(':'))
-        if not (0 <= hours <= 23 and 0 <= minutes <= 59):
-            raise ValueError(f"Invalid time: {v}. Hours must be 0-23, minutes 0-59.")
+        parts = list(map(int, v.split(':')))
+        hours, minutes = parts[0], parts[1]
+        seconds = parts[2] if len(parts) == 3 else 0
+        if not (0 <= hours <= 23 and 0 <= minutes <= 59 and 0 <= seconds <= 59):
+            raise ValueError(f"Invalid time: {v}. Hours 0-23, minutes 0-59, seconds 0-59.")
         return v
 
 
@@ -155,6 +157,8 @@ class ProcessingConfig(BaseModel):
         description="Output formats: geojson, csv, parquet, geoparquet"
     )
     snapshot_mode: bool = Field(False, description="Output only 1 point per vehicle at snapshot time")
+    interpolation_fps: int = Field(1, ge=1, le=60, description="Frames per second for sub-second interpolation (e.g. 10 = 0.1s steps). Higher values produce smoother ArcGIS Time Slider animation.")
+    num_output_chunks: int = Field(1, ge=1, description="Split output into N time-based files for ArcGIS performance. Each chunk becomes a separate Feature Class.")
     heatmap_enabled: bool = Field(False, description="Enable heatmap export with vehicle counts")
     heatmap_time_interval: int = Field(300, ge=60, description="Time interval for heatmap sampling (seconds)")
     heatmap_output_formats: list[str] = Field(
@@ -237,11 +241,12 @@ def generate_snapshot_intervals(start_time: str, end_time: str,
         The last snapshot must end before or at the end_time.
     """
     # Convert times to seconds
-    h_start, m_start = map(int, start_time.split(':'))
-    h_end, m_end = map(int, end_time.split(':'))
+    def _to_seconds(t):
+        parts = list(map(int, t.split(':')))
+        return parts[0] * 3600 + parts[1] * 60 + (parts[2] if len(parts) == 3 else 0)
 
-    start_seconds = h_start * 3600 + m_start * 60
-    end_seconds = h_end * 3600 + m_end * 60
+    start_seconds = _to_seconds(start_time)
+    end_seconds = _to_seconds(end_time)
 
     intervals = []
     current = start_seconds
@@ -440,7 +445,9 @@ def main(config_path: str):
                 output_formats=config.processing.output_formats,
                 num_workers=config.processing.num_workers,
                 chunk_size=config.processing.chunk_size,
-                snapshot_mode=config.processing.snapshot_mode
+                snapshot_mode=config.processing.snapshot_mode,
+                fps=config.processing.interpolation_fps,
+                num_chunks=config.processing.num_output_chunks,
             )
         except Exception as e:
             logger.error(f"Error in Step 2: {e}")
@@ -469,10 +476,12 @@ def main(config_path: str):
         start = time.time()
 
         # Calculate start and end times in seconds
-        h_start, m_start = map(int, config.filters.start_time.split(':'))
-        h_end, m_end = map(int, config.filters.end_time.split(':'))
-        start_sec = h_start * 3600 + m_start * 60
-        end_sec = h_end * 3600 + m_end * 60
+        def _to_seconds(t):
+            parts = list(map(int, t.split(':')))
+            return parts[0] * 3600 + parts[1] * 60 + (parts[2] if len(parts) == 3 else 0)
+
+        start_sec = _to_seconds(config.filters.start_time)
+        end_sec = _to_seconds(config.filters.end_time)
 
         try:
             parquet_to_heatmap(

@@ -61,6 +61,37 @@ def load_valid_link_ids(gpkg_path, id_field='linkId'):
     return set(gpkg[id_field].astype(str))
 
 
+def load_valid_link_ids_bbox(gpkg_path, bbox, id_field='linkId'):
+    """Load link IDs spatially clipped to a bounding box.
+
+    Filters the road network to only include links whose geometry intersects
+    the given bounding box. Used to restrict XML event processing to a specific
+    geographic area of interest, dramatically reducing processing time for
+    large simulation datasets.
+
+    Args:
+        gpkg_path: Path to the GeoPackage file containing road network
+        bbox: Tuple of (xmin, ymin, xmax, ymax) in WGS84 decimal degrees
+        id_field: Name of the column containing link IDs (default: 'linkId')
+
+    Returns:
+        Set of valid link IDs as strings (only links within the bbox)
+
+    Example:
+        >>> bbox = (13.3, 52.4, 13.6, 52.6)  # Berlin area
+        >>> valid_links = load_valid_link_ids_bbox("network.gpkg", bbox)
+        >>> len(valid_links)
+        12043
+    """
+    from shapely.geometry import box as shapely_box
+    logger.info(f"Loading road network GeoPackage with bbox filter: {bbox}")
+    gdf = gpd.read_file(gpkg_path)
+    clip_geom = shapely_box(*bbox)
+    gdf = gdf[gdf.geometry.intersects(clip_geom)]
+    logger.info(f"Bbox filter applied: {len(gdf):,} links within {bbox}")
+    return set(gdf[id_field].astype(str))
+
+
 def parse_time_interval(interval_str):
     """Convert time interval string to tuple.
 
@@ -323,7 +354,8 @@ def write_to_parquet(output_path, pool, queue, valid_links, time_intervals):
 
 
 def xml_to_parquet_filtered(xml_input, valid_links, parquet_output,
-                            time_intervals, num_workers, chunk_size, gpkg_network=None):
+                            time_intervals, num_workers, chunk_size,
+                            gpkg_network=None, bbox=None):
     """Convert XML events file to filtered Parquet format with parallel processing.
 
     Main entry point for the XML to Parquet conversion pipeline. Orchestrates
@@ -339,6 +371,9 @@ def xml_to_parquet_filtered(xml_input, valid_links, parquet_output,
         num_workers: Number of parallel worker processes for filtering
         chunk_size: Number of events to process per chunk
         gpkg_network: Optional path to GeoPackage for loading valid link IDs
+        bbox: Optional (xmin, ymin, xmax, ymax) bounding box in WGS84 to spatially
+              restrict link loading. Only links intersecting the bbox are included.
+              Ignored if valid_links is provided directly.
 
     Raises:
         ValueError: If both valid_links and gpkg_network are None
@@ -357,7 +392,8 @@ def xml_to_parquet_filtered(xml_input, valid_links, parquet_output,
         ...     time_intervals=time_intervals,
         ...     num_workers=8,
         ...     chunk_size=100000,
-        ...     gpkg_network="network.gpkg"
+        ...     gpkg_network="network.gpkg",
+        ...     bbox=(13.3, 52.4, 13.6, 52.6)
         ... )
     """
 
@@ -365,7 +401,10 @@ def xml_to_parquet_filtered(xml_input, valid_links, parquet_output,
     if valid_links is None:
         if gpkg_network is None:
             raise ValueError("Either valid_links or gpkg_network must be provided")
-        valid_links = load_valid_link_ids(gpkg_network)
+        if bbox is not None:
+            valid_links = load_valid_link_ids_bbox(gpkg_network, bbox)
+        else:
+            valid_links = load_valid_link_ids(gpkg_network)
 
     # Setup multiprocessing
     queue = mp.Queue(maxsize=num_workers * 4)

@@ -83,7 +83,7 @@ def time_to_timestamp(seconds):
         '2024/01/01 18:00:00'
     """
     base = datetime(2024, 1, 1)
-    return (base + timedelta(seconds=int(seconds))).strftime('%Y/%m/%d %H:%M:%S')
+    return (base + timedelta(seconds=int(seconds))).strftime('%Y-%m-%dT%H:%M:%S')
 
 
 def process_timepoint_batch(timepoints, df, link_attrs):
