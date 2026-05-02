@@ -127,7 +127,22 @@ def run_pipeline(args):
         # Apply bbox spatial filter if provided — restrict valid links to study area
         if bbox:
             from shapely.geometry import box as shapely_box
-            clip_geom = shapely_box(*bbox)
+            from shapely.ops import transform as shapely_transform
+            import pyproj
+            import geopandas as gpd
+
+            # bbox is in WGS84 — reproject to match the network CRS
+            network_gdf = gpd.read_file(args.gpkg, rows=1)  # read one row just to get CRS
+            network_crs = network_gdf.crs
+            clip_geom_wgs84 = shapely_box(*bbox)
+            if network_crs and not network_crs.equals("EPSG:4326"):
+                transformer = pyproj.Transformer.from_crs(
+                    "EPSG:4326", network_crs, always_xy=True
+                )
+                clip_geom = shapely_transform(transformer.transform, clip_geom_wgs84)
+            else:
+                clip_geom = clip_geom_wgs84
+
             valid_links = set(
                 lid for lid, attrs in link_attrs.items()
                 if attrs.get('geometry') is not None and attrs['geometry'].intersects(clip_geom)

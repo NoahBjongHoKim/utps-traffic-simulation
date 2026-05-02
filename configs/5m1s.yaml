@@ -1,13 +1,17 @@
 paths:
   xml_input: data/raw/events_v4.xml
   gpkg_network: data/raw/road_network_v4_clipped_single.gpkg
+  parquet_raw: data/interim/events_full.parquet
   parquet_intermediate: data/interim/filtered_events.parquet
   output_base: data/processed/1m5s
+
 filters:
   start_time: '07:00:00'
   end_time: '07:00:05'
   frequency_seconds: 5
   duration_seconds: 5
+  bbox: [18.338, 43.837, 18.347, 43.846]
+
 processing:
   num_workers: 8
   chunk_size: 100000
@@ -15,11 +19,12 @@ processing:
   num_outputchunks: 4
   output_formats:
   - csv
-  snapshot_mode: true
+  - parquet
+  snapshot_mode: false
   heatmap_enabled: false
   heatmap_time_interval: 300
   heatmap_output_formats:
   - csv
   heatmap_output_base: data/processed/heatmap
-skip_xml_to_parquet: true
+skip_xml_to_parquet: false
 skip_parquet_to_geojson: false

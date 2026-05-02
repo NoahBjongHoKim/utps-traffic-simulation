@@ -78,17 +78,33 @@ def load_valid_link_ids_bbox(gpkg_path, bbox, id_field='linkId'):
         Set of valid link IDs as strings (only links within the bbox)
 
     Example:
-        >>> bbox = (13.3, 52.4, 13.6, 52.6)  # Berlin area
+        >>> bbox = (18.338, 43.837, 18.347, 43.846)  # Sarajevo area (WGS84)
         >>> valid_links = load_valid_link_ids_bbox("network.gpkg", bbox)
         >>> len(valid_links)
-        12043
+        312
     """
     from shapely.geometry import box as shapely_box
+    import pyproj
+    from shapely.ops import transform as shapely_transform
+
     logger.info(f"Loading road network GeoPackage with bbox filter: {bbox}")
     gdf = gpd.read_file(gpkg_path)
-    clip_geom = shapely_box(*bbox)
+
+    # Build clip box in WGS84, then reproject to match the network CRS
+    clip_geom_wgs84 = shapely_box(*bbox)
+    network_crs = gdf.crs
+
+    if network_crs and not network_crs.equals("EPSG:4326"):
+        transformer = pyproj.Transformer.from_crs(
+            "EPSG:4326", network_crs, always_xy=True
+        )
+        clip_geom = shapely_transform(transformer.transform, clip_geom_wgs84)
+        logger.info(f"Bbox reprojected from WGS84 to {network_crs}")
+    else:
+        clip_geom = clip_geom_wgs84
+
     gdf = gdf[gdf.geometry.intersects(clip_geom)]
-    logger.info(f"Bbox filter applied: {len(gdf):,} links within {bbox}")
+    logger.info(f"Bbox filter applied: {len(gdf):,} links within bbox")
     return set(gdf[id_field].astype(str))
 
 
@@ -417,13 +433,180 @@ def xml_to_parquet_filtered(xml_input, valid_links, parquet_output,
 
     # Process and write to Parquet
     write_to_parquet(parquet_output, pool, queue, valid_links, time_intervals)
-    
+
     # Cleanup
     pool.close()
     pool.join()
     parser.join()
-    
+
     print(f"Output saved to: {parquet_output}")
+
+
+def xml_to_parquet_full(xml_input, parquet_output, num_workers, chunk_size):
+    """Convert a full XML events file to Parquet with no time or spatial filtering.
+
+    This is a one-time conversion meant to be run once per dataset. The resulting
+    Parquet file contains every EnterLink/LeaveLink pair in the XML and can be
+    re-used across many pipeline runs without re-parsing the XML.
+
+    Use filter_parquet_to_intermediate() afterwards to apply time and bbox filters
+    quickly from the raw Parquet instead of re-parsing the XML each time.
+
+    Args:
+        xml_input: Path to the XML events file
+        parquet_output: Path for the output raw Parquet file
+        num_workers: Number of parallel worker processes
+        chunk_size: Number of events per processing chunk
+    """
+    # Use a single catch-all interval spanning the full 24-hour day
+    # and accept all link IDs (empty valid_links check disabled via sentinel)
+    ALL_LINKS = None  # special sentinel handled below
+
+    logger.info(f"Full XML → Parquet conversion (no filter): {xml_input}")
+
+    schema = pa.schema([
+        ('person', pa.string()),
+        ('link_id', pa.string()),
+        ('time_enter', pa.int32()),
+        ('time_leave', pa.int32()),
+        ('interval_id', pa.int32()),
+        ('event_type', pa.string())
+    ])
+
+    queue = mp.Queue(maxsize=num_workers * 4)
+    pool = mp.Pool(num_workers)
+
+    parser_proc = mp.Process(target=parse_xml_to_chunks,
+                             args=(xml_input, queue, chunk_size))
+    parser_proc.start()
+
+    writer = None
+    total_written = 0
+
+    try:
+        # Process chunks — no time or spatial filter, just pair EnterLink/LeaveLink
+        for chunk in iter(queue.get, None):
+            records = []
+            enter_events = {}
+
+            for event in chunk:
+                event_type = event.get('type')
+                person = event.get('person')
+                link_id = event.get('link')
+                time_str = event.get('time')
+
+                if not time_str:
+                    continue
+                try:
+                    t = int(time_str)
+                except ValueError:
+                    continue
+
+                if event_type == 'EnterLink':
+                    enter_events[(person, link_id)] = event
+                elif event_type == 'LeaveLink' and (person, link_id) in enter_events:
+                    enter_event = enter_events.pop((person, link_id))
+                    records.append({
+                        'person': person,
+                        'link_id': link_id,
+                        'time_enter': int(enter_event.get('time')),
+                        'time_leave': t,
+                        'interval_id': -1,   # not yet assigned
+                        'event_type': 'trip'
+                    })
+
+            if records:
+                df = pd.DataFrame(records)
+                table = pa.Table.from_pandas(df, schema=schema)
+                if writer is None:
+                    writer = pq.ParquetWriter(parquet_output, schema)
+                writer.write_table(table)
+                total_written += len(records)
+
+    finally:
+        if writer:
+            writer.close()
+
+    pool.close()
+    pool.join()
+    parser_proc.join()
+
+    logger.success(f"Raw Parquet written: {total_written:,} events → {parquet_output}")
+
+
+def filter_parquet_to_intermediate(raw_parquet, parquet_output,
+                                   valid_links, time_intervals):
+    """Filter a raw (full) Parquet file to an intermediate filtered Parquet.
+
+    Much faster than re-parsing XML. Reads the raw Parquet, applies time interval
+    and spatial (link_id) filters, assigns interval_id, clips time_leave to
+    interval boundaries, and writes the result.
+
+    Args:
+        raw_parquet: Path to the raw full-dataset Parquet (from xml_to_parquet_full)
+        parquet_output: Path for the output filtered Parquet
+        valid_links: Set of valid link ID strings (spatial filter)
+        time_intervals: List of (start_seconds, end_seconds) tuples
+    """
+    import pyarrow.parquet as pq_local
+
+    logger.info(f"Filtering raw Parquet → intermediate: {raw_parquet}")
+    logger.info(f"  {len(valid_links):,} valid links, {len(time_intervals)} time intervals")
+
+    pf = pq_local.ParquetFile(raw_parquet)
+    total_rows = pf.metadata.num_rows
+    logger.info(f"  Raw Parquet rows: {total_rows:,}")
+
+    schema = pa.schema([
+        ('person', pa.string()),
+        ('link_id', pa.string()),
+        ('time_enter', pa.int32()),
+        ('time_leave', pa.int32()),
+        ('interval_id', pa.int32()),
+        ('event_type', pa.string())
+    ])
+
+    writer = None
+    total_filtered = 0
+
+    for batch in pf.iter_batches(batch_size=500_000):
+        df = batch.to_pandas()
+
+        # Spatial filter
+        df = df[df['link_id'].isin(valid_links)]
+        if df.empty:
+            continue
+
+        # Time filter — assign interval_id and clip time_leave
+        matched_rows = []
+        for idx, (interval_start, interval_end) in enumerate(time_intervals):
+            mask = (df['time_enter'] >= interval_start) & (df['time_enter'] <= interval_end)
+            subset = df[mask].copy()
+            if subset.empty:
+                continue
+            subset['interval_id'] = idx
+            is_snapshot = (interval_start == interval_end)
+            if not is_snapshot:
+                subset['time_leave'] = subset['time_leave'].clip(upper=interval_end)
+            matched_rows.append(subset)
+
+        if not matched_rows:
+            continue
+
+        out_df = pd.concat(matched_rows, ignore_index=True)
+        out_df['event_type'] = 'trip'
+        table = pa.Table.from_pandas(out_df[['person', 'link_id', 'time_enter',
+                                              'time_leave', 'interval_id', 'event_type']],
+                                     schema=schema)
+        if writer is None:
+            writer = pq_local.ParquetWriter(parquet_output, schema)
+        writer.write_table(table)
+        total_filtered += len(out_df)
+
+    if writer:
+        writer.close()
+
+    logger.success(f"Filtered Parquet written: {total_filtered:,} events → {parquet_output}")
 
 
 if __name__ == "__main__":

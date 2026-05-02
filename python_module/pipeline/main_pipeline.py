@@ -52,7 +52,9 @@ from ..config import logger
 from ..utils.network_cache import build_link_attributes_dict, load_network_cached
 from .parquet_to_animation import parquet_to_export
 from .parquet_to_heatmap import parquet_to_heatmap
-from .xml_to_parquet import xml_to_parquet_filtered
+from .xml_to_parquet import (xml_to_parquet_filtered,
+                              xml_to_parquet_full,
+                              filter_parquet_to_intermediate)
 
 
 class PathConfig(BaseModel):
@@ -71,8 +73,14 @@ class PathConfig(BaseModel):
 
     xml_input: Path = Field(..., description="Input XML file with events")
     gpkg_network: Path = Field(..., description="Input GeoPackage with road network")
-    parquet_intermediate: Path = Field(..., description="Intermediate Parquet file")
+    parquet_intermediate: Path = Field(..., description="Intermediate filtered Parquet file")
     output_base: Path = Field(..., description="Base path for output files (without extension)")
+    parquet_raw: Optional[Path] = Field(
+        None,
+        description="Optional path for the permanent full-dataset raw Parquet (no time/bbox filter). "
+                    "If set and the file does not exist, the XML is parsed once and saved here. "
+                    "On subsequent runs the raw Parquet is filtered in seconds instead of re-parsing the XML."
+    )
 
     @field_validator('xml_input', 'gpkg_network')
     @classmethod
@@ -122,6 +130,12 @@ class FilterConfig(BaseModel):
     end_time: str = Field(..., pattern=r'^\d{2}:\d{2}(:\d{2})?$', description="End time for snapshots (hh:mm or hh:mm:ss)")
     frequency_seconds: int = Field(..., ge=1, description="Frequency between snapshots (seconds)")
     duration_seconds: int = Field(..., ge=0, description="Duration of each snapshot (seconds)")
+    bbox: Optional[tuple[float, float, float, float]] = Field(
+        None,
+        description="Optional spatial bounding box (xmin, ymin, xmax, ymax) in WGS84. "
+                    "Only road links intersecting this box are processed. "
+                    "Example: [18.338, 43.837, 18.347, 43.846]"
+    )
 
     @field_validator('start_time', 'end_time')
     @classmethod
@@ -402,15 +416,50 @@ def main(config_path: str):
             config.filters.duration_seconds
         )
 
-        try:
-            xml_to_parquet_filtered(
-                xml_input=str(config.paths.xml_input),
-                valid_links=valid_links,
-                parquet_output=str(config.paths.parquet_intermediate),
-                time_intervals=time_intervals,
-                num_workers=config.processing.num_workers,
-                chunk_size=config.processing.chunk_size
+        # Apply bbox spatial filter to valid_links if configured
+        if config.filters.bbox is not None:
+            from .xml_to_parquet import load_valid_link_ids_bbox
+            logger.info(f"Applying bbox filter: {config.filters.bbox}")
+            valid_links = load_valid_link_ids_bbox(
+                str(config.paths.gpkg_network), config.filters.bbox
             )
+            logger.info(f"Bbox-filtered links: {len(valid_links):,}")
+
+        try:
+            if config.paths.parquet_raw is not None:
+                # Fast path: use permanent raw Parquet, skip XML re-parse if possible
+                if not config.paths.parquet_raw.exists():
+                    logger.info("Raw Parquet not found — parsing full XML once (this takes a while)...")
+                    xml_to_parquet_full(
+                        xml_input=str(config.paths.xml_input),
+                        parquet_output=str(config.paths.parquet_raw),
+                        num_workers=config.processing.num_workers,
+                        chunk_size=config.processing.chunk_size,
+                    )
+                    elapsed_xml = time.time() - start
+                    logger.success(f"Raw Parquet created in {elapsed_xml:.2f}s ({elapsed_xml/60:.1f} min)")
+                else:
+                    size_mb = config.paths.parquet_raw.stat().st_size / (1024 * 1024)
+                    logger.info(f"Raw Parquet found ({size_mb:.2f} MB) — skipping XML parse")
+
+                logger.info("Filtering raw Parquet by time + spatial constraints...")
+                filter_parquet_to_intermediate(
+                    raw_parquet=str(config.paths.parquet_raw),
+                    parquet_output=str(config.paths.parquet_intermediate),
+                    valid_links=valid_links,
+                    time_intervals=time_intervals,
+                )
+            else:
+                # Original path: parse and filter XML directly (slow)
+                xml_to_parquet_filtered(
+                    xml_input=str(config.paths.xml_input),
+                    valid_links=valid_links,
+                    parquet_output=str(config.paths.parquet_intermediate),
+                    time_intervals=time_intervals,
+                    num_workers=config.processing.num_workers,
+                    chunk_size=config.processing.chunk_size,
+                    bbox=config.filters.bbox,
+                )
         except Exception as e:
             logger.error(f"Error in Step 1: {e}")
             logger.exception("Full traceback:")
