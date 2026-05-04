@@ -115,8 +115,12 @@ def run_pipeline(args):
     # Optional bbox
     bbox = tuple(args.bbox) if args.bbox else None
 
-    # Setup intermediate file path
-    intermediate_parquet = args.output + "_intermediate.parquet"
+    # Setup intermediate file path — store in data/interim/ next to the output dir,
+    # not inside the processed output folder. Create it if it doesn't exist.
+    output_dir = os.path.dirname(os.path.abspath(args.output))
+    interim_dir = os.path.join(os.path.dirname(output_dir), "interim")
+    os.makedirs(interim_dir, exist_ok=True)
+    intermediate_parquet = os.path.join(interim_dir, "filtered_events.parquet")
 
     try:
         # Stage 1: Load network

@@ -103,9 +103,12 @@ class PathConfig(BaseModel):
     @field_validator('parquet_intermediate', 'output_base')
     @classmethod
     def validate_output_dir(cls, v: Optional[Path]) -> Optional[Path]:
-        """Check that output directory exists."""
+        """Ensure output directory exists, creating it if necessary."""
         if v is not None and not v.parent.exists():
-            raise ValueError(f"Output directory does not exist: {v.parent}")
+            try:
+                v.parent.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                raise ValueError(f"Could not create output directory {v.parent}: {e}")
         return v
 
 
