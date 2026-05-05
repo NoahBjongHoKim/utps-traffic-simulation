@@ -275,7 +275,7 @@ namespace UTPS_Addin
                             }
                         }
 
-                        // Step B: Parquet → in-memory XY feature class (temporary, not added to map)
+                        // Step B: Parquet → in-memory XY feature class (temporary)
                         System.Diagnostics.Debug.WriteLine("Converting Parquet → XY feature class...");
                         string tempFc = @"memory\traffic_tmp";
                         var xyResult = await Geoprocessing.ExecuteToolAsync(
@@ -286,16 +286,14 @@ namespace UTPS_Addin
                                 "x",           // X field
                                 "y",           // Y field
                                 "",            // Z field (none)
-                                "GEOGCS['GCS_WGS_1984',DATUM['D_WGS_1984',SPHEROID['WGS_1984',6378137.0,298.257223563]],PRIMEM['Greenwich',0.0],UNIT['Degree',0.0174532925199433]]"),
-                            null, null,
-                            GPExecuteToolFlags.RefreshProjectItems);  // process without adding to map
+                                "4326"));      // Coordinate system WKID as string
                         if (xyResult.IsFailed)
                         {
                             System.Diagnostics.Debug.WriteLine($"XYTableToPoint failed: {string.Join(", ", xyResult.ErrorMessages)}");
                             return;
                         }
 
-                        // Remove temp layer from map if it snuck in (some SDK versions auto-add memory FCs)
+                        // Remove temp layer from map if it was auto-added
                         var tmpLayer = map.FindLayers("traffic_tmp").FirstOrDefault();
                         if (tmpLayer != null)
                             map.RemoveLayer(tmpLayer);
@@ -304,9 +302,7 @@ namespace UTPS_Addin
                         System.Diagnostics.Debug.WriteLine($"Copying to GDB: {fcFullPath}");
                         var copyResult = await Geoprocessing.ExecuteToolAsync(
                             "management.CopyFeatures",
-                            Geoprocessing.MakeValueArray(tempFc, fcFullPath),
-                            null, null,
-                            GPExecuteToolFlags.RefreshProjectItems);  // process without adding to map
+                            Geoprocessing.MakeValueArray(tempFc, fcFullPath));
                         if (copyResult.IsFailed)
                         {
                             System.Diagnostics.Debug.WriteLine($"CopyFeatures failed: {string.Join(", ", copyResult.ErrorMessages)}");
@@ -316,9 +312,7 @@ namespace UTPS_Addin
                         // Clean up the in-memory temporary FC
                         await Geoprocessing.ExecuteToolAsync(
                             "management.Delete",
-                            Geoprocessing.MakeValueArray(tempFc),
-                            null, null,
-                            GPExecuteToolFlags.RefreshProjectItems);
+                            Geoprocessing.MakeValueArray(tempFc));
 
                         // Step D: Add only the final GDB Feature Class to map
                         System.Diagnostics.Debug.WriteLine("Adding GDB Feature Class to map...");
