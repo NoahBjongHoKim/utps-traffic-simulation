@@ -106,8 +106,9 @@ namespace UTPS_Addin
                     Owner = ArcGIS.Desktop.Framework.FrameworkApplication.Current.MainWindow
                 };
 
-                // Start the pipeline in a background task
-                Task.Run(() =>
+                // Start the pipeline in a background task (intentional fire-and-forget;
+                // the progress dialog waits for the runner process directly)
+                _ = Task.Run(() =>
                 {
                     try
                     {
@@ -285,8 +286,8 @@ namespace UTPS_Addin
                                 "y",           // Y field
                                 "",            // Z field (none)
                                 ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326)),
-                            cancelable: false,
-                            flags: GPExecuteToolFlags.None);  // None = don't auto-add to map
+                            null, null,
+                            GPExecuteToolFlags.None);  // None = don't auto-add to map
                         if (xyResult.IsFailed)
                         {
                             System.Diagnostics.Debug.WriteLine($"XYTableToPoint failed: {string.Join(", ", xyResult.ErrorMessages)}");
@@ -298,8 +299,8 @@ namespace UTPS_Addin
                         var copyResult = await Geoprocessing.ExecuteToolAsync(
                             "management.CopyFeatures",
                             Geoprocessing.MakeValueArray(tempFc, fcFullPath),
-                            cancelable: false,
-                            flags: GPExecuteToolFlags.None);  // None = don't auto-add to map
+                            null, null,
+                            GPExecuteToolFlags.None);  // None = don't auto-add to map
                         if (copyResult.IsFailed)
                         {
                             System.Diagnostics.Debug.WriteLine($"CopyFeatures failed: {string.Join(", ", copyResult.ErrorMessages)}");
@@ -310,8 +311,8 @@ namespace UTPS_Addin
                         await Geoprocessing.ExecuteToolAsync(
                             "management.Delete",
                             Geoprocessing.MakeValueArray(tempFc),
-                            cancelable: false,
-                            flags: GPExecuteToolFlags.None);
+                            null, null,
+                            GPExecuteToolFlags.None);
 
                         // Step D: Add only the final GDB Feature Class to map
                         System.Diagnostics.Debug.WriteLine("Adding GDB Feature Class to map...");
