@@ -41,13 +41,29 @@ namespace UTPS_Addin
                     return;
                 }
 
-                // Store the extent for use by TrafficLoaderButton
-                AnimationState.BboxFilter = extent;
+                // Reproject extent to WGS84 so Python receives decimal degrees.
+                // The map CRS may be anything (e.g. EPSG:32632 UTM in metres).
+                var wgs84 = ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326);
+                var wgs84Extent = ArcGIS.Core.Geometry.GeometryEngine.Instance.Project(extent, wgs84)
+                    as ArcGIS.Core.Geometry.Envelope;
+
+                if (wgs84Extent == null)
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                        "Could not reproject map extent to WGS84.",
+                        "Projection Error",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Store the WGS84 extent for use by TrafficLoaderButton
+                AnimationState.BboxFilter = wgs84Extent;
 
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
                     $"Study area set to current map view:\n\n" +
-                    $"  X (Longitude):  {extent.XMin:F4}° → {extent.XMax:F4}°\n" +
-                    $"  Y (Latitude):   {extent.YMin:F4}° → {extent.YMax:F4}°\n\n" +
+                    $"  X (Longitude):  {wgs84Extent.XMin:F4}° → {wgs84Extent.XMax:F4}°\n" +
+                    $"  Y (Latitude):   {wgs84Extent.YMin:F4}° → {wgs84Extent.YMax:F4}°\n\n" +
                     "Only road links within this area will be processed.\n" +
                     "Now click 'Load Traffic Data' to start the pipeline.",
                     "Study Area Set",

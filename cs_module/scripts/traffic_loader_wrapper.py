@@ -20,6 +20,12 @@ import os
 from pathlib import Path
 import traceback
 
+# Force UTF-8 output on Windows to avoid CP1252 encoding errors in log messages
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 
 def print_progress(stage, percent, message):
     """Print structured progress message for C# to parse."""
@@ -211,7 +217,7 @@ def run_pipeline(args):
             parquet_input=intermediate_parquet,
             link_attrs=link_attrs,
             output_base=args.output,
-            output_formats=['parquet', 'geojson'],  # Parquet for internal use, GeoJSON for ArcGIS
+            output_formats=['parquet'],  # Parquet only — C# converts to GDB Feature Class
             num_workers=args.workers,
             chunk_size=args.chunk_size,
             snapshot_mode=True,  # Output simple event points, not interpolated trajectories

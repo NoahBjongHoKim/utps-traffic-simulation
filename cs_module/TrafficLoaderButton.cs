@@ -218,7 +218,8 @@ namespace UTPS_Addin
 
                 string parquetPath = config.OutputPath + ".parquet";
                 string outputDir   = Path.GetDirectoryName(config.OutputPath) ?? ".";
-                string gdbName     = "traffic_output";
+                // GDB named after the output (e.g. "export_1.gdb") so each run gets its own GDB
+                string gdbName     = Path.GetFileNameWithoutExtension(config.OutputPath);
                 string gdbPath     = Path.Combine(outputDir, gdbName + ".gdb");
                 string fcName      = "TrafficEvents";
                 string fcFullPath  = Path.Combine(gdbPath, fcName);
@@ -272,7 +273,7 @@ namespace UTPS_Addin
                             }
                         }
 
-                        // Step B: Parquet → in-memory XY feature class
+                        // Step B: Parquet → in-memory XY feature class (temporary, not added to map)
                         System.Diagnostics.Debug.WriteLine("Converting Parquet → XY feature class...");
                         string tempFc = @"memory\traffic_tmp";
                         var xyResult = await Geoprocessing.ExecuteToolAsync(
@@ -283,7 +284,9 @@ namespace UTPS_Addin
                                 "x",           // X field
                                 "y",           // Y field
                                 "",            // Z field (none)
-                                ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326)));
+                                ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326)),
+                            cancelable: false,
+                            flags: GPExecuteToolFlags.None);  // None = don't auto-add to map
                         if (xyResult.IsFailed)
                         {
                             System.Diagnostics.Debug.WriteLine($"XYTableToPoint failed: {string.Join(", ", xyResult.ErrorMessages)}");
@@ -294,17 +297,26 @@ namespace UTPS_Addin
                         System.Diagnostics.Debug.WriteLine($"Copying to GDB: {fcFullPath}");
                         var copyResult = await Geoprocessing.ExecuteToolAsync(
                             "management.CopyFeatures",
-                            Geoprocessing.MakeValueArray(tempFc, fcFullPath));
+                            Geoprocessing.MakeValueArray(tempFc, fcFullPath),
+                            cancelable: false,
+                            flags: GPExecuteToolFlags.None);  // None = don't auto-add to map
                         if (copyResult.IsFailed)
                         {
                             System.Diagnostics.Debug.WriteLine($"CopyFeatures failed: {string.Join(", ", copyResult.ErrorMessages)}");
                             return;
                         }
 
-                        // Step D: Add Feature Class layer to map
+                        // Clean up the in-memory temporary FC
+                        await Geoprocessing.ExecuteToolAsync(
+                            "management.Delete",
+                            Geoprocessing.MakeValueArray(tempFc),
+                            cancelable: false,
+                            flags: GPExecuteToolFlags.None);
+
+                        // Step D: Add only the final GDB Feature Class to map
                         System.Diagnostics.Debug.WriteLine("Adding GDB Feature Class to map...");
                         var layer = LayerFactory.Instance.CreateLayer(
-                            new Uri(fcFullPath), map, layerName: "Traffic Events") as FeatureLayer;
+                            new Uri(fcFullPath), map, layerName: gdbName) as FeatureLayer;
 
                         eventsAdded = layer != null;
 

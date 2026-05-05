@@ -228,6 +228,12 @@ namespace UTPS_Addin
             _process.StartInfo.EnvironmentVariables.Remove("CONDA_DEFAULT_ENV");
             _process.StartInfo.EnvironmentVariables.Remove("CONDA_PREFIX");
 
+            // Force UTF-8 I/O so log messages with non-ASCII characters (e.g. →) don't
+            // crash on Windows consoles that default to CP1252
+            _process.StartInfo.EnvironmentVariables["PYTHONUTF8"] = "1";
+            _process.StartInfo.StandardOutputEncoding = Encoding.UTF8;
+            _process.StartInfo.StandardErrorEncoding = Encoding.UTF8;
+
             // Wire up output handlers
             _process.OutputDataReceived += OnOutputDataReceived;
             _process.ErrorDataReceived += OnErrorDataReceived;
