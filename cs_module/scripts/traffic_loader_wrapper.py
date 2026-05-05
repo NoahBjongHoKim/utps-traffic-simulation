@@ -152,27 +152,14 @@ def run_pipeline(args):
         network_df = load_network_cached(args.gpkg)
         link_attrs = build_link_attributes_dict(network_df, link_id_col='linkId', precompute_endpoints=True)
 
-        # Always read the network CRS — needed to reproject output coordinates to WGS84
-        import geopandas as gpd
-        network_gdf_meta = gpd.read_file(args.gpkg, rows=1)
-        network_crs = network_gdf_meta.crs
-        print_progress("NETWORK", 18, f"Network CRS: {network_crs}")
-
-        # Apply bbox spatial filter if provided — restrict valid links to study area
+        # Apply bbox spatial filter if provided — restrict valid links to study area.
+        # IMPORTANT: link_attrs geometries come from the network cache which is already
+        # reprojected to WGS84 (EPSG:4326), so the bbox (also WGS84) can be used directly
+        # with no CRS conversion.
         if bbox:
             from shapely.geometry import box as shapely_box
-            from shapely.ops import transform as shapely_transform
-            import pyproj
-
-            # bbox is in WGS84 — reproject to match the network CRS
-            clip_geom_wgs84 = shapely_box(*bbox)
-            if network_crs and not network_crs.equals("EPSG:4326"):
-                transformer = pyproj.Transformer.from_crs(
-                    "EPSG:4326", network_crs, always_xy=True
-                )
-                clip_geom = shapely_transform(transformer.transform, clip_geom_wgs84)
-            else:
-                clip_geom = clip_geom_wgs84
+            clip_geom = shapely_box(*bbox)  # bbox is WGS84, cache geometries are WGS84
+            print_progress("NETWORK", 18, f"Applying bbox filter: {bbox}")
 
             valid_links = set(
                 lid for lid, attrs in link_attrs.items()
@@ -183,6 +170,11 @@ def run_pipeline(args):
         else:
             valid_links = set(link_attrs.keys())
             print_progress("NETWORK", 25, f"Network loaded: {len(link_attrs):,} links")
+
+        # Bail out early if bbox filter produced 0 links — nothing to process
+        if bbox and len(valid_links) == 0:
+            print_error("Bbox filter matched 0 road links. Check that the study area overlaps the road network.")
+            return 1
 
         # Stage 2: Build filtered intermediate parquet
         if raw_parquet:
