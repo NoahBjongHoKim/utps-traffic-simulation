@@ -113,10 +113,10 @@
 
                     <!-- Start Time -->
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="Start Time (HH:MM) *" Style="{StaticResource FieldLabel}"/>
+                        <TextBlock Text="Start Time (HH:MM:SS) *" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding StartTime, UpdateSourceTrigger=PropertyChanged}"
                                  Style="{StaticResource FieldTextBox}"
-                                 ToolTip="Start time in 24-hour format (e.g., 08:00)"/>
+                                 ToolTip="Start time in 24-hour format (e.g., 08:00 or 08:00:00)"/>
                     </StackPanel>
 
                     <!-- Separator -->
@@ -128,16 +128,16 @@
 
                     <!-- End Time -->
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="End Time (HH:MM) *" Style="{StaticResource FieldLabel}"/>
+                        <TextBlock Text="End Time (HH:MM:SS) *" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding EndTime, UpdateSourceTrigger=PropertyChanged}"
                                  Style="{StaticResource FieldTextBox}"
-                                 ToolTip="End time in 24-hour format (e.g., 09:00)"/>
+                                 ToolTip="End time in 24-hour format (e.g., 09:00 or 08:01:30)"/>
                     </StackPanel>
                 </Grid>
 
                 <!-- Example times -->
                 <TextBlock FontSize="10" Foreground="#888" Margin="0,4,0,0">
-                    Examples: Morning rush (08:00 - 09:00), Evening rush (17:00 - 18:00)
+                    Examples: 08:00 - 09:00, or with seconds: 08:00:00 - 08:01:30
                 </TextBlock>
 
                 <!-- Output Section -->
