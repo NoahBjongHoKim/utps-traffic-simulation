@@ -57,24 +57,22 @@ def validate_inputs(args):
     if not os.path.exists(args.gpkg):
         errors.append(f"GPKG file not found: {args.gpkg}")
 
-    # Validate time format (HH:MM)
+    # Validate time format — accepts HH:MM or HH:MM:SS
     import re
-    time_pattern = re.compile(r'^([0-1][0-9]|2[0-3]):([0-5][0-9])$')
+    time_pattern = re.compile(r'^([0-1][0-9]|2[0-3]):([0-5][0-9])(?::([0-5][0-9]))?$')
 
     if not time_pattern.match(args.start_time):
-        errors.append(f"Invalid start time format: {args.start_time} (use HH:MM)")
+        errors.append(f"Invalid start time format: {args.start_time} (use HH:MM or HH:MM:SS)")
 
     if not time_pattern.match(args.end_time):
-        errors.append(f"Invalid end time format: {args.end_time} (use HH:MM)")
+        errors.append(f"Invalid end time format: {args.end_time} (use HH:MM or HH:MM:SS)")
 
     # Validate time range
     if time_pattern.match(args.start_time) and time_pattern.match(args.end_time):
-        start_h, start_m = map(int, args.start_time.split(':'))
-        end_h, end_m = map(int, args.end_time.split(':'))
-        start_minutes = start_h * 60 + start_m
-        end_minutes = end_h * 60 + end_m
+        start_seconds = time_to_seconds(args.start_time)
+        end_seconds = time_to_seconds(args.end_time)
 
-        if end_minutes <= start_minutes:
+        if end_seconds <= start_seconds:
             errors.append(f"End time must be after start time")
 
     # Check output directory
@@ -89,9 +87,11 @@ def validate_inputs(args):
 
 
 def time_to_seconds(time_str):
-    """Convert HH:MM to seconds since midnight."""
-    h, m = map(int, time_str.split(':'))
-    return h * 3600 + m * 60
+    """Convert HH:MM or HH:MM:SS to seconds since midnight."""
+    parts = time_str.split(':')
+    h, m = int(parts[0]), int(parts[1])
+    s = int(parts[2]) if len(parts) == 3 else 0
+    return h * 3600 + m * 60 + s
 
 
 def run_pipeline(args):
@@ -152,16 +152,19 @@ def run_pipeline(args):
         network_df = load_network_cached(args.gpkg)
         link_attrs = build_link_attributes_dict(network_df, link_id_col='linkId', precompute_endpoints=True)
 
+        # Always read the network CRS — needed to reproject output coordinates to WGS84
+        import geopandas as gpd
+        network_gdf_meta = gpd.read_file(args.gpkg, rows=1)
+        network_crs = network_gdf_meta.crs
+        print_progress("NETWORK", 18, f"Network CRS: {network_crs}")
+
         # Apply bbox spatial filter if provided — restrict valid links to study area
         if bbox:
             from shapely.geometry import box as shapely_box
             from shapely.ops import transform as shapely_transform
             import pyproj
-            import geopandas as gpd
 
             # bbox is in WGS84 — reproject to match the network CRS
-            network_gdf = gpd.read_file(args.gpkg, rows=1)  # read one row just to get CRS
-            network_crs = network_gdf.crs
             clip_geom_wgs84 = shapely_box(*bbox)
             if network_crs and not network_crs.equals("EPSG:4326"):
                 transformer = pyproj.Transformer.from_crs(
@@ -223,6 +226,7 @@ def run_pipeline(args):
             snapshot_mode=True,  # Output simple event points, not interpolated trajectories
             fps=args.fps,
             num_chunks=args.num_chunks,
+            network_crs=network_crs,  # Reproject UTM → WGS84 for ArcGIS
         )
         print_progress("EXPORT", 95, "Event point layers created")
 

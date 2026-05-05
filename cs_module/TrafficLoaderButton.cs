@@ -6,6 +6,7 @@ using ArcGIS.Core.Data;
 using ArcGIS.Desktop.Core.Geoprocessing;
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace UTPS_Addin
@@ -287,12 +288,17 @@ namespace UTPS_Addin
                                 "",            // Z field (none)
                                 ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326)),
                             null, null,
-                            GPExecuteToolFlags.None);  // None = don't auto-add to map
+                            GPExecuteToolFlags.RefreshProjectItems);  // process without adding to map
                         if (xyResult.IsFailed)
                         {
                             System.Diagnostics.Debug.WriteLine($"XYTableToPoint failed: {string.Join(", ", xyResult.ErrorMessages)}");
                             return;
                         }
+
+                        // Remove temp layer from map if it snuck in (some SDK versions auto-add memory FCs)
+                        var tmpLayer = map.FindLayers("traffic_tmp").FirstOrDefault();
+                        if (tmpLayer != null)
+                            map.RemoveLayer(tmpLayer);
 
                         // Step C: Copy from memory → GDB (creates a proper permanent Feature Class)
                         System.Diagnostics.Debug.WriteLine($"Copying to GDB: {fcFullPath}");
@@ -300,7 +306,7 @@ namespace UTPS_Addin
                             "management.CopyFeatures",
                             Geoprocessing.MakeValueArray(tempFc, fcFullPath),
                             null, null,
-                            GPExecuteToolFlags.None);  // None = don't auto-add to map
+                            GPExecuteToolFlags.RefreshProjectItems);  // process without adding to map
                         if (copyResult.IsFailed)
                         {
                             System.Diagnostics.Debug.WriteLine($"CopyFeatures failed: {string.Join(", ", copyResult.ErrorMessages)}");
@@ -312,7 +318,7 @@ namespace UTPS_Addin
                             "management.Delete",
                             Geoprocessing.MakeValueArray(tempFc),
                             null, null,
-                            GPExecuteToolFlags.None);
+                            GPExecuteToolFlags.RefreshProjectItems);
 
                         // Step D: Add only the final GDB Feature Class to map
                         System.Diagnostics.Debug.WriteLine("Adding GDB Feature Class to map...");

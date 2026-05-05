@@ -513,7 +513,7 @@ def process_parquet_chunk(args):
 def parquet_to_export(parquet_input, link_attrs, output_base,
                        output_formats, num_workers, chunk_size,
                        gpkg_network=None, snapshot_mode=False,
-                       fps=1, num_chunks=1):
+                       fps=1, num_chunks=1, network_crs=None):
     """Main function to convert Parquet to multiple output formats with interpolation.
 
     Args:
@@ -607,6 +607,25 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
         pool.join()
 
     logger.info(f"Total features generated: {len(all_rows):,}")
+
+    # Reproject coordinates from network CRS → WGS84 if needed.
+    # Link geometries are stored in the network's native CRS (e.g. EPSG:32632 UTM metres).
+    # ArcGIS XYTableToPoint expects decimal degrees (EPSG:4326).
+    if all_rows and network_crs is not None:
+        import pyproj
+        src_crs = str(network_crs)
+        if src_crs != 'EPSG:4326' and src_crs != 'epsg:4326':
+            logger.info(f"Reprojecting coordinates from {src_crs} → EPSG:4326...")
+            transformer = pyproj.Transformer.from_crs(src_crs, 'EPSG:4326', always_xy=True)
+            xs = [r['x'] for r in all_rows]
+            ys = [r['y'] for r in all_rows]
+            lons, lats = transformer.transform(xs, ys)
+            for r, lon, lat in zip(all_rows, lons, lats):
+                r['x'] = round(lon, 8)
+                r['y'] = round(lat, 8)
+                # Also update the GeoJSON feature coordinates
+                r['_feature']['geometry']['coordinates'] = [round(lon, 8), round(lat, 8)]
+            logger.info(f"Reprojection complete")
 
     # Sort by timestamp so chunk splits are contiguous time ranges
     all_rows.sort(key=lambda r: r['timestamp'])
