@@ -215,7 +215,7 @@ def run_pipeline(args):
             output_formats=['parquet'],  # Parquet only — C# converts to GDB Feature Class
             num_workers=args.workers,
             chunk_size=args.chunk_size,
-            snapshot_mode=True,  # Output simple event points, not interpolated trajectories
+            snapshot_mode=False,  # Interpolate full trajectories along each link
             fps=args.fps,
             num_chunks=args.num_chunks,
         )
@@ -271,7 +271,7 @@ def main():
     parser.add_argument('--bbox', type=float, nargs=4,
                         metavar=('XMIN', 'YMIN', 'XMAX', 'YMAX'),
                         help='Spatial bounding box filter in WGS84 decimal degrees')
-    parser.add_argument('--fps', type=int, default=1,
+    parser.add_argument('--fps', type=int, default=5,
                         help='Frames per second for sub-second interpolation (default: 1)')
     parser.add_argument('--num-chunks', type=int, default=1,
                         help='Split output into N time-based files for ArcGIS performance (default: 1)')
