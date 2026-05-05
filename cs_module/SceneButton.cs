@@ -10,17 +10,16 @@ namespace UTPS_Addin
     /// Switch the active map view to a 3D Local Scene and prepare the traffic layer for 3D display.
     ///
     /// What this button does:
-    ///   1. Switches the current MapView to ViewingMode.SceneLocal (3D Local Scene).
+    ///   1. Switches the current MapView to MapViewingMode.SceneLocal (3D Local Scene).
     ///      The World Elevation surface activates automatically in Scene views
     ///      (requires ArcGIS Online sign-in or ArcGIS Pro Advanced license).
     ///   2. Adds Esri's World Topographic Map basemap as a visual reference layer.
-    ///   3. Symbolizes the traffic points as small white 3D cube markers using CIMObjectMarker3DSymbol.
+    ///   3. Symbolizes the traffic points as small white square markers (visible in 3D).
     ///
     /// Buildings note: No freely-available global 3D building dataset exists as a ready-made
     /// ArcGIS service. To add buildings:
     ///   - Add your own building footprints from the Catalog pane
     ///   - Or use ArcGIS Pro → Insert → Add Elevation Source / Building Layer for city-specific data
-    ///   - OpenStreetMap 3D buildings are available via third-party tile services if needed
     /// </summary>
     internal class SceneButton : Button
     {
@@ -43,9 +42,9 @@ namespace UTPS_Addin
                 bool switched = false;
                 await QueuedTask.Run(async () =>
                 {
-                    if (mapView.CanSetViewingMode(ViewingMode.SceneLocal))
+                    if (mapView.CanSetViewingMode(MapViewingMode.SceneLocal))
                     {
-                        await mapView.SetViewingModeAsync(ViewingMode.SceneLocal);
+                        await mapView.SetViewingModeAsync(MapViewingMode.SceneLocal);
                         switched = true;
                         System.Diagnostics.Debug.WriteLine("Switched to 3D Local Scene");
                     }
@@ -86,7 +85,7 @@ namespace UTPS_Addin
                     }
                 });
 
-                // ── 3. Symbolize points as white 3D cubes ────────────────────────────
+                // ── 3. Symbolize points as white squares (visible in 3D) ─────────────
                 var layer = AnimationState.TrafficLayer;
                 if (layer != null)
                 {
@@ -94,7 +93,7 @@ namespace UTPS_Addin
                     {
                         try
                         {
-                            ApplyWhite3DCubeRenderer(layer);
+                            ApplyWhite3DRenderer(layer);
                         }
                         catch (Exception ex)
                         {
@@ -111,7 +110,7 @@ namespace UTPS_Addin
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
                     "Switched to 3D Local Scene.\n\n" +
                     "• World Topographic Map added as basemap\n" +
-                    (layer != null ? "• Traffic points symbolized as white 3D cubes\n" : "") +
+                    (layer != null ? "• Traffic points symbolized as white squares\n" : "") +
                     "• Terrain surface activates automatically (requires ArcGIS Online sign-in)\n\n" +
                     "To add buildings:\n" +
                     "  • Add your own building footprints via the Catalog pane\n" +
@@ -132,52 +131,24 @@ namespace UTPS_Addin
         }
 
         /// <summary>
-        /// Symbolize the feature layer with a white 3D cube (CIMObjectMarker3DSymbol).
-        /// Falls back to a white square marker if the 3D symbol cannot be constructed.
+        /// Symbolize points as small white filled squares — clearly visible in 3D scenes.
+        /// The user can customize the symbol further via the Layer Properties pane.
         /// </summary>
-        private static void ApplyWhite3DCubeRenderer(FeatureLayer layer)
+        private static void ApplyWhite3DRenderer(FeatureLayer layer)
         {
-            CIMPointSymbol pointSym;
+            var sym = SymbolFactory.Instance.ConstructPointSymbol(
+                CIMColor.CreateRGBColor(255, 255, 255), 5, SimpleMarkerStyle.Square);
 
-            try
-            {
-                // Attempt true 3D cube via CIM
-                var cube3D = new CIMObjectMarker3DSymbol
-                {
-                    PrimitiveShape = PrimitiveShape3D.Cube,
-                    Width          = 5,
-                    Height         = 5,
-                    Depth          = 5,
-                    Material       = new CIMSymbolMaterial
-                    {
-                        Color = CIMColor.CreateRGBColor(255, 255, 255)
-                    },
-                    Enable = true,
-                };
-
-                pointSym = new CIMPointSymbol
-                {
-                    SymbolLayers          = new CIMSymbolLayer[] { cube3D },
-                    UseRealWorldSymbolSizes = false,
-                };
-
-                System.Diagnostics.Debug.WriteLine("3D cube symbol constructed");
-            }
-            catch (Exception ex)
-            {
-                // Fall back to white square if 3D symbol construction fails
-                System.Diagnostics.Debug.WriteLine($"3D symbol failed, using square fallback: {ex.Message}");
-                pointSym = SymbolFactory.Instance.ConstructPointSymbol(
-                    CIMColor.CreateRGBColor(255, 255, 255), 5, SimpleMarkerStyle.Square);
-            }
+            // Disable outline for a clean solid-white appearance
+            sym.UseRealWorldSymbolSizes = false;
 
             var renderer = new SimpleRendererDefinition
             {
-                SymbolTemplate = pointSym.MakeSymbolReference()
+                SymbolTemplate = sym.MakeSymbolReference()
             };
 
             layer.SetRenderer(layer.CreateRenderer(renderer));
-            System.Diagnostics.Debug.WriteLine("White 3D cube renderer applied");
+            System.Diagnostics.Debug.WriteLine("White square renderer applied for 3D scene");
         }
     }
 }

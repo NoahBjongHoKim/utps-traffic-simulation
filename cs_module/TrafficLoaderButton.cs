@@ -349,10 +349,11 @@ namespace UTPS_Addin
                                 var cimLayer = layer.GetDefinition() as CIMFeatureLayer;
                                 if (cimLayer?.FeatureTable != null)
                                 {
-                                    cimLayer.FeatureTable.TimeFields = new CIMLayerTimeInfo
+                                    // CIMTimeTableDefinition enables the Time Slider on the layer
+                                    cimLayer.FeatureTable.TimeDefinition = new CIMTimeTableDefinition
                                     {
                                         StartTimeField = "timestamp_dt",
-                                        TimeReference = new CIMTimeReference { TimeZone = "UTC" },
+                                        EndTimeField   = "timestamp_dt",  // instant — same field for start and end
                                     };
                                     layer.SetDefinition(cimLayer);
                                     System.Diagnostics.Debug.WriteLine("Time enabled on timestamp_dt field");

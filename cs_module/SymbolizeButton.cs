@@ -53,7 +53,7 @@ namespace UTPS_Addin
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"SymbolizeButton error: {ex.Message}");
-                    ArcGIS.Desktop.Framework.Application.Current.Dispatcher.Invoke(() =>
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
                     {
                         ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
                             $"Error applying symbolization:\n{ex.Message}",
