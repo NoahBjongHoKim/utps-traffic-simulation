@@ -359,6 +359,7 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
             "properties": {
                 "timestamp": time_to_timestamp(time_enter),
                 "timestamp_dt": time_to_timestamp(time_enter),
+                "time_s": round(float(time_enter), 3),
                 "angle": bearing,
                 "person_id": person_id,
                 "interval_id": interval_id,
@@ -380,6 +381,7 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
             "properties": {
                 "timestamp": time_to_timestamp(time_enter),
                 "timestamp_dt": time_to_timestamp(time_enter),
+                "time_s": round(float(time_enter), 3),
                 "angle": bearing,
                 "person_id": person_id,
                 "interval_id": interval_id,
@@ -408,6 +410,7 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
             "properties": {
                 "timestamp": time_to_timestamp(time_enter + t),
                 "timestamp_dt": time_to_timestamp(time_enter + t),
+                "time_s": round(float(time_enter + t), 3),
                 "angle": bearing,
                 "person_id": person_id,
                 "interval_id": interval_id,
@@ -585,6 +588,7 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
                     'y': coords[1],
                     'timestamp': props['timestamp'],
                     'timestamp_dt': props['timestamp_dt'],
+                    'time_s': props['time_s'],
                     'angle': props['angle'],
                     'person_id': props['person_id'],
                     'interval_id': props['interval_id'],
@@ -647,8 +651,15 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
         if 'parquet' in output_formats:
             path = f"{base}.parquet"
             df_out = pd.DataFrame([{k: v for k, v in r.items() if k != '_feature'} for r in rows])
-            # Cast timestamp_dt to proper datetime so ArcGIS reads it as a Date field (not String)
-            df_out['timestamp_dt'] = pd.to_datetime(df_out['timestamp_dt']).dt.tz_localize('UTC')
+            # Parse timestamp string → datetime64[ms, UTC].
+            # Explicit format prevents silent truncation of sub-second digits.
+            # Millisecond precision (not microsecond) is what ArcGIS Pro 3.x maps to
+            # its high-precision timestamp field — microseconds get truncated to seconds.
+            df_out['timestamp_dt'] = (
+                pd.to_datetime(df_out['timestamp_dt'], format='%Y-%m-%dT%H:%M:%S.%f')
+                .dt.tz_localize('UTC')
+                .astype('datetime64[ms, UTC]')  # force ms precision for ArcGIS
+            )
             df_out['speed_level'] = df_out['speed_level'].astype('int8')
             df_out.to_parquet(path, index=False)
             logger.success(f"Parquet created: {path}")
