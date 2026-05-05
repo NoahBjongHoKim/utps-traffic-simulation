@@ -87,7 +87,7 @@ namespace UTPS_Addin
         /// <summary>
         /// Start Python processing with progress dialog.
         /// </summary>
-        private void StartProcessing(TrafficConfigViewModel config)
+        private async void StartProcessing(TrafficConfigViewModel config)
         {
             try
             {
@@ -155,7 +155,7 @@ namespace UTPS_Addin
                     System.Diagnostics.Debug.WriteLine("Processing completed successfully");
 
                     // Add layers to map (method uses QueuedTask internally)
-                    AddLayersToMap(config).Wait();
+                    await AddLayersToMap(config);
                 }
             }
             catch (Exception ex)
