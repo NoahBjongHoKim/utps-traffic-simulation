@@ -40,9 +40,12 @@ def validate_inputs(args):
     """Validate input arguments before processing."""
     errors = []
 
-    # Check XML file
-    if not os.path.exists(args.xml):
-        errors.append(f"XML file not found: {args.xml}")
+    # Check XML file — only required if no pre-computed raw parquet exists alongside it
+    xml_dir = os.path.dirname(os.path.abspath(args.xml))
+    xml_stem = os.path.splitext(os.path.basename(args.xml))[0]
+    raw_parquet_candidate = os.path.join(xml_dir, xml_stem + ".parquet")
+    if not os.path.exists(args.xml) and not os.path.exists(raw_parquet_candidate):
+        errors.append(f"XML file not found and no pre-computed parquet exists: {args.xml}")
 
     # Check GPKG file
     if not os.path.exists(args.gpkg):
@@ -96,7 +99,11 @@ def run_pipeline(args):
         repo_root = Path(__file__).parent.parent.parent
         sys.path.insert(0, str(repo_root))
 
-        from python_module.pipeline.xml_to_parquet import xml_to_parquet_filtered
+        from python_module.pipeline.xml_to_parquet import (
+            xml_to_parquet_filtered,
+            xml_to_parquet_full,
+            filter_parquet_to_intermediate,
+        )
         from python_module.pipeline.parquet_to_animation import parquet_to_export
         from python_module.utils.network_cache import build_link_attributes_dict, load_network_cached
 
@@ -115,10 +122,21 @@ def run_pipeline(args):
     # Optional bbox
     bbox = tuple(args.bbox) if args.bbox else None
 
-    # Setup intermediate file path — store in data/interim/ next to the output dir,
-    # not inside the processed output folder. Create it if it doesn't exist.
+    # Resolve paths
     output_dir = os.path.dirname(os.path.abspath(args.output))
-    interim_dir = os.path.join(os.path.dirname(output_dir), "interim")
+    xml_dir = os.path.dirname(os.path.abspath(args.xml))
+
+    # Look for a pre-computed raw parquet next to the XML file (same stem, .parquet extension).
+    # If found, skip the 30+ minute XML parse entirely and filter from parquet instead.
+    xml_stem = os.path.splitext(os.path.basename(args.xml))[0]
+    raw_parquet_candidate = os.path.join(xml_dir, xml_stem + ".parquet")
+    if os.path.exists(raw_parquet_candidate):
+        raw_parquet = raw_parquet_candidate
+    else:
+        raw_parquet = None
+
+    # Intermediate (filtered) parquet goes in an "interim" subfolder of the output dir
+    interim_dir = os.path.join(output_dir, "interim")
     os.makedirs(interim_dir, exist_ok=True)
     intermediate_parquet = os.path.join(interim_dir, "filtered_events.parquet")
 
@@ -157,18 +175,35 @@ def run_pipeline(args):
             valid_links = set(link_attrs.keys())
             print_progress("NETWORK", 25, f"Network loaded: {len(link_attrs):,} links")
 
-        # Stage 2: XML to Parquet
-        print_progress("XML_PARSE", 30, "Starting XML parsing and filtering...")
-        xml_to_parquet_filtered(
-            xml_input=args.xml,
-            valid_links=valid_links,
-            parquet_output=intermediate_parquet,
-            time_intervals=time_intervals,
-            num_workers=args.workers,
-            chunk_size=args.chunk_size,
-            bbox=bbox,
-        )
-        print_progress("XML_PARSE", 60, "XML parsing complete")
+        # Stage 2: Build filtered intermediate parquet
+        if raw_parquet:
+            # Fast path — filter the pre-computed raw parquet (seconds, not minutes)
+            print_progress("XML_PARSE", 30, f"Raw parquet found, skipping XML parse: {os.path.basename(raw_parquet)}")
+            filter_parquet_to_intermediate(
+                raw_parquet=raw_parquet,
+                parquet_output=intermediate_parquet,
+                valid_links=valid_links,
+                time_intervals=time_intervals,
+            )
+            print_progress("XML_PARSE", 60, "Filtered from raw parquet")
+        else:
+            # Slow path — parse full XML once and save as permanent raw parquet,
+            # then filter from it. Next run will find the raw parquet and skip XML entirely.
+            print_progress("XML_PARSE", 30, "No raw parquet found — parsing full XML (one-time, this may take a while)...")
+            xml_to_parquet_full(
+                xml_input=args.xml,
+                parquet_output=raw_parquet_candidate,
+                num_workers=args.workers,
+                chunk_size=args.chunk_size,
+            )
+            print_progress("XML_PARSE", 50, f"Raw parquet saved: {os.path.basename(raw_parquet_candidate)}")
+            filter_parquet_to_intermediate(
+                raw_parquet=raw_parquet_candidate,
+                parquet_output=intermediate_parquet,
+                valid_links=valid_links,
+                time_intervals=time_intervals,
+            )
+            print_progress("XML_PARSE", 60, "XML parsing complete")
 
         # Stage 3: Export to Parquet and GeoJSON (snapshot mode - simple event points)
         print_progress("EXPORT", 65, "Creating event point layers...")
