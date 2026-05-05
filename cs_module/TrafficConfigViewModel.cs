@@ -242,7 +242,7 @@ namespace UTPS_Addin
             }
             else if (!IsValidTimeFormat(StartTime))
             {
-                errors.AppendLine("• Start Time must be in HH:MM format (e.g., 08:00)");
+                errors.AppendLine("• Start Time must be in HH:MM or HH:MM:SS format (e.g., 08:00 or 08:00:00)");
             }
 
             // Validate end time format
@@ -252,7 +252,7 @@ namespace UTPS_Addin
             }
             else if (!IsValidTimeFormat(EndTime))
             {
-                errors.AppendLine("• End Time must be in HH:MM format (e.g., 09:00)");
+                errors.AppendLine("• End Time must be in HH:MM or HH:MM:SS format (e.g., 09:00 or 08:01:30)");
             }
 
             // Validate time range
@@ -298,22 +298,25 @@ namespace UTPS_Addin
 
         private bool IsValidTimeFormat(string time)
         {
-            // Match HH:MM format (24-hour)
-            var regex = new Regex(@"^([0-1][0-9]|2[0-3]):([0-5][0-9])$");
+            // Match HH:MM or HH:MM:SS format (24-hour)
+            var regex = new Regex(@"^([0-1][0-9]|2[0-3]):([0-5][0-9])(?::([0-5][0-9]))?$");
             return regex.IsMatch(time);
+        }
+
+        private int TimeToSeconds(string time)
+        {
+            var parts = time.Split(':');
+            int h = int.Parse(parts[0]);
+            int m = int.Parse(parts[1]);
+            int s = parts.Length == 3 ? int.Parse(parts[2]) : 0;
+            return h * 3600 + m * 60 + s;
         }
 
         private bool IsValidTimeRange(string startTime, string endTime)
         {
             try
             {
-                var startParts = startTime.Split(':');
-                var endParts = endTime.Split(':');
-
-                int startMinutes = int.Parse(startParts[0]) * 60 + int.Parse(startParts[1]);
-                int endMinutes = int.Parse(endParts[0]) * 60 + int.Parse(endParts[1]);
-
-                return endMinutes > startMinutes;
+                return TimeToSeconds(endTime) > TimeToSeconds(startTime);
             }
             catch
             {
