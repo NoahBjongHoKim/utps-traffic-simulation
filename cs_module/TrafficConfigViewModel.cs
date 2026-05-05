@@ -22,6 +22,7 @@ namespace UTPS_Addin
         private string _startTime = "08:00";
         private string _endTime = "09:00";
         private string _outputPath;
+        private int _fps = 5;
         private string _validationMessage;
         private bool _hasValidationErrors;
 
@@ -117,6 +118,20 @@ namespace UTPS_Addin
                 {
                     _outputPath = value;
                     OnPropertyChanged(nameof(OutputPath));
+                    ClearValidation();
+                }
+            }
+        }
+
+        public int Fps
+        {
+            get => _fps;
+            set
+            {
+                if (_fps != value)
+                {
+                    _fps = value;
+                    OnPropertyChanged(nameof(Fps));
                     ClearValidation();
                 }
             }
@@ -262,6 +277,12 @@ namespace UTPS_Addin
                 {
                     errors.AppendLine("• End Time must be after Start Time");
                 }
+            }
+
+            // Validate FPS
+            if (Fps < 1 || Fps > 30)
+            {
+                errors.AppendLine("• Interpolation FPS must be between 1 and 30");
             }
 
             // Validate output path

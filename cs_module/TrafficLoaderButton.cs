@@ -3,6 +3,7 @@ using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
 using ArcGIS.Desktop.Catalog;
 using ArcGIS.Core.Data;
+using ArcGIS.Core.CIM;
 using ArcGIS.Desktop.Core.Geoprocessing;
 using System;
 using System.IO;
@@ -98,8 +99,8 @@ namespace UTPS_Addin
                 // Create Python runner
                 var runner = new PythonRunner();
 
-                // Build optional bbox argument from study area if one was set
-                string extraArgs = BuildExtraArgs();
+                // Build optional bbox + fps arguments
+                string extraArgs = BuildExtraArgs(config);
 
                 // Create and show progress dialog
                 var progressDialog = new ProgressDialog
@@ -174,9 +175,9 @@ namespace UTPS_Addin
 
         /// <summary>
         /// Build optional extra CLI arguments for the Python wrapper.
-        /// Appends --bbox if a study area was set in AnimationState.
+        /// Appends --bbox if a study area was set in AnimationState, and always appends --fps.
         /// </summary>
-        private static string BuildExtraArgs()
+        private static string BuildExtraArgs(TrafficConfigViewModel config)
         {
             var args = new System.Text.StringBuilder();
 
@@ -193,6 +194,11 @@ namespace UTPS_Addin
             {
                 System.Diagnostics.Debug.WriteLine("[BboxFilter READ] null — no spatial filter will be applied");
             }
+
+            // Always forward FPS to Python wrapper
+            if (args.Length > 0) args.Append(' ');
+            args.Append($"--fps {config.Fps}");
+            System.Diagnostics.Debug.WriteLine($"[FPS] {config.Fps}");
 
             return args.ToString();
         }
@@ -334,6 +340,30 @@ namespace UTPS_Addin
                             new Uri(fcFullPath), map, layerName: gdbName) as FeatureLayer;
 
                         eventsAdded = layer != null;
+
+                        // Step E: Auto-enable Time on the layer using timestamp_dt field
+                        if (layer != null)
+                        {
+                            try
+                            {
+                                var cimLayer = layer.GetDefinition() as CIMFeatureLayer;
+                                if (cimLayer?.FeatureTable != null)
+                                {
+                                    cimLayer.FeatureTable.TimeFields = new CIMLayerTimeInfo
+                                    {
+                                        StartTimeField = "timestamp_dt",
+                                        TimeReference = new CIMTimeReference { TimeZone = "UTC" },
+                                    };
+                                    layer.SetDefinition(cimLayer);
+                                    System.Diagnostics.Debug.WriteLine("Time enabled on timestamp_dt field");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Non-fatal — time can be enabled manually
+                                System.Diagnostics.Debug.WriteLine($"Could not auto-enable time: {ex.Message}");
+                            }
+                        }
 
                         // Store in AnimationState for downstream buttons
                         AnimationState.OutputGdbPath = gdbPath;

@@ -31,17 +31,13 @@
         <group id="UTPS_Anim_Group" caption="Animation Workflow" appearsOnAddInTab="true">
           <button refID="UTPS_Anim_SetStudyArea_Button" size="large"/>
           <button refID="UTPS_Addin_TrafficLoader_Button" size="large"/>
-        </group>
-
-        <group id="UTPS_Addin_Group2" caption="Test/Debug" appearsOnAddInTab="true">
-          <!-- Test buttons for debugging -->
-          <button refID="UTPS_Addin_TestParquet_Button" size="small"/>
-          <button refID="UTPS_Addin_TestPoint_Button" size="small"/>
+          <button refID="UTPS_Anim_Symbolize_Button" size="large"/>
+          <button refID="UTPS_Anim_Scene_Button" size="large"/>
         </group>
       </groups>
 
       <controls>
-        <!-- Animation Workflow buttons -->
+        <!-- Set Study Area button -->
         <button id="UTPS_Anim_SetStudyArea_Button" caption="1. Set Study Area"
                 className="DrawBboxButton" loadOnClick="true"
                 smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen16.png"
@@ -56,40 +52,43 @@
         </button>
 
         <!-- Load Traffic Data button -->
-        <button id="UTPS_Addin_TrafficLoader_Button" caption="Load Traffic Data"
+        <button id="UTPS_Addin_TrafficLoader_Button" caption="2. Load Traffic Data"
                 className="TrafficLoaderButton" loadOnClick="true"
                 smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue16.png"
                 largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue32.png">
           <tooltip heading="Import Traffic Simulation">
             Load traffic simulation data from XML events file.
-            Configure time range and output format for analysis.
+            Configure time range, FPS, and output settings.
             If a study area was set, only events within that area are processed.
-            Output is written to a File Geodatabase for ArcGIS Time Slider support.
+            Output is written to a File Geodatabase with time automatically enabled.
             <disabledText />
           </tooltip>
         </button>
 
-        <!-- Test buttons -->
-        <button id="UTPS_Addin_TestParquet_Button" caption="Test: Import Parquet"
-                className="TestParquetButton" loadOnClick="true"
-                smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen16.png"
-                largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen32.png">
-          <tooltip heading="Test Parquet Import">
-            Test button: Import a Parquet file as a table.
-            Opens file dialog to select Parquet file.
-            Check Output window for detailed logs.
-            <disabledText />
-          </tooltip>
-        </button>
-
-        <button id="UTPS_Addin_TestPoint_Button" caption="Test: Create Point"
-                className="TestPointButton" loadOnClick="true"
+        <!-- Toggle Speed Color button -->
+        <button id="UTPS_Anim_Symbolize_Button" caption="3. Toggle Speed Color"
+                className="SymbolizeButton" loadOnClick="true"
                 smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonOrange16.png"
                 largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonOrange32.png">
-          <tooltip heading="Test Point Creation">
-            Test button: Create a single point feature layer.
-            Creates a point in San Francisco for testing.
-            Check Output window for detailed logs.
+          <tooltip heading="Toggle Speed-Based Coloring">
+            Toggle between speed-based color coding and plain white symbols.
+            When active: red (slow) → green (fast) graduated color by speed_level field.
+            Click again to revert to simple white points.
+            <disabledText />
+          </tooltip>
+        </button>
+
+        <!-- Switch to 3D Scene button -->
+        <button id="UTPS_Anim_Scene_Button" caption="4. Switch to 3D"
+                className="SceneButton" loadOnClick="true"
+                smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen16.png"
+                largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen32.png">
+          <tooltip heading="Switch to 3D Local Scene">
+            Switches the active map view to a 3D Local Scene.
+            Adds a topographic basemap for visual context.
+            Symbolizes traffic points as white 3D boxes.
+            Terrain surface activates automatically (requires ArcGIS Online sign-in).
+            For buildings: add your own layer via Catalog pane.
             <disabledText />
           </tooltip>
         </button>

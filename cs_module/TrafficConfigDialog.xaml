@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:UTPS_Addin"
         Title="Traffic Data Loader - Configuration"
-        Height="520"
+        Height="580"
         Width="650"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
@@ -162,6 +162,25 @@
                 <TextBlock FontSize="10" Foreground="#888" Margin="0,4,0,0">
                     Output will be saved as GeoParquet format for efficient storage and analysis.
                 </TextBlock>
+
+                <!-- Interpolation FPS -->
+                <TextBlock Text="Interpolation FPS" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             Text="{Binding Fps, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource FieldTextBox}"
+                             ToolTip="Frames per second for trajectory interpolation (e.g. 5 = one point every 0.2 s)"/>
+                    <TextBlock Grid.Column="1"
+                               Text="frames per second (1–30)"
+                               VerticalAlignment="Center"
+                               Margin="8,0,0,0"
+                               FontSize="10"
+                               Foreground="#888"/>
+                </Grid>
 
                 <!-- Validation Messages -->
                 <Border Background="#FFF3CD"
