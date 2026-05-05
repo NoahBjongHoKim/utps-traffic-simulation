@@ -60,6 +60,10 @@ namespace UTPS_Addin
                 // Store the WGS84 extent for use by TrafficLoaderButton
                 AnimationState.BboxFilter = wgs84Extent;
 
+                System.Diagnostics.Debug.WriteLine(
+                    $"[BboxFilter SET] XMin={wgs84Extent.XMin:F6} YMin={wgs84Extent.YMin:F6} " +
+                    $"XMax={wgs84Extent.XMax:F6} YMax={wgs84Extent.YMax:F6}");
+
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
                     $"Study area set to current map view:\n\n" +
                     $"  X (Longitude):  {wgs84Extent.XMin:F4}° → {wgs84Extent.XMax:F4}°\n" +

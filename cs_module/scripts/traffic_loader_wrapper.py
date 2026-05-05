@@ -226,7 +226,6 @@ def run_pipeline(args):
             snapshot_mode=True,  # Output simple event points, not interpolated trajectories
             fps=args.fps,
             num_chunks=args.num_chunks,
-            network_crs=network_crs,  # Reproject UTM → WGS84 for ArcGIS
         )
         print_progress("EXPORT", 95, "Event point layers created")
 

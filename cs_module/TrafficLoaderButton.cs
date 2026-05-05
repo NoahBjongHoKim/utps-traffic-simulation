@@ -184,8 +184,14 @@ namespace UTPS_Addin
             {
                 var bb = AnimationState.BboxFilter;
                 // Format with invariant culture to avoid locale-specific decimal separators
-                args.Append(FormattableString.Invariant(
-                    $"--bbox {bb.XMin:F6} {bb.YMin:F6} {bb.XMax:F6} {bb.YMax:F6}"));
+                string bboxArg = FormattableString.Invariant(
+                    $"--bbox {bb.XMin:F6} {bb.YMin:F6} {bb.XMax:F6} {bb.YMax:F6}");
+                args.Append(bboxArg);
+                System.Diagnostics.Debug.WriteLine($"[BboxFilter READ] {bboxArg}");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[BboxFilter READ] null — no spatial filter will be applied");
             }
 
             return args.ToString();
@@ -309,12 +315,20 @@ namespace UTPS_Addin
                             return;
                         }
 
+                        // Remove any auto-added layers from XYTableToPoint or CopyFeatures
+                        foreach (var name in new[] { "traffic_tmp", "TrafficEvents", fcName })
+                        {
+                            var autoLayer = map.FindLayers(name).FirstOrDefault();
+                            if (autoLayer != null)
+                                map.RemoveLayer(autoLayer);
+                        }
+
                         // Clean up the in-memory temporary FC
                         await Geoprocessing.ExecuteToolAsync(
                             "management.Delete",
                             Geoprocessing.MakeValueArray(tempFc));
 
-                        // Step D: Add only the final GDB Feature Class to map
+                        // Step D: Add only the final GDB Feature Class to map, named after the output
                         System.Diagnostics.Debug.WriteLine("Adding GDB Feature Class to map...");
                         var layer = LayerFactory.Instance.CreateLayer(
                             new Uri(fcFullPath), map, layerName: gdbName) as FeatureLayer;

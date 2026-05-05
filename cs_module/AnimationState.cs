@@ -65,7 +65,9 @@ namespace UTPS_Addin
         /// </summary>
         public static void Reset()
         {
-            BboxFilter = null;
+            // NOTE: BboxFilter is intentionally NOT reset here — it is set by "Set Study Area"
+            // and should persist across multiple "Load Traffic Data" runs until the user
+            // explicitly sets a new study area.
             OutputGdbPath = null;
             TrafficFeatureClassName = "TrafficEvents";
             TrafficLayer = null;
