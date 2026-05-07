@@ -4,7 +4,6 @@ using ArcGIS.Desktop.Mapping;
 using ArcGIS.Desktop.Catalog;
 using ArcGIS.Core.Data;
 using ArcGIS.Core.CIM;
-using ArcGIS.Core.Time;
 using ArcGIS.Desktop.Core.Geoprocessing;
 using System;
 using System.IO;
@@ -403,7 +402,7 @@ namespace UTPS_Addin
                                         if (mv == null) return;
 
                                         // Set the overall time extent and the current window (span)
-                                        mv.Time = new TimeRange(
+                                        mv.Time = new ArcGIS.Core.TimeRange(
                                             startDt,
                                             startDt + TimeSpan.FromSeconds(spanSeconds));
 
