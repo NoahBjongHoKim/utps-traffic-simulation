@@ -1,3 +1,4 @@
+using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
@@ -82,7 +83,7 @@ namespace UTPS_Addin
 
                 // ── 2. Activate (open) the scene view ────────────────────────────────
                 // CreateMapPaneAsync must be called on the UI thread (not inside QueuedTask)
-                IMapPane pane = FrameworkApplication.Panes.ActivateMapPane(sceneMap);
+                IMapPane pane = await ProApp.Panes.CreateMapPaneAsync(sceneMap);
                 System.Diagnostics.Debug.WriteLine($"Scene pane opened: {pane != null}");
 
                 // Give the pane a moment to become active
