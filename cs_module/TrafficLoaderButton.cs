@@ -4,6 +4,7 @@ using ArcGIS.Desktop.Mapping;
 using ArcGIS.Desktop.Catalog;
 using ArcGIS.Core.Data;
 using ArcGIS.Core.CIM;
+using ArcGIS.Core.Time;
 using ArcGIS.Desktop.Core.Geoprocessing;
 using System;
 using System.IO;
@@ -204,6 +205,18 @@ namespace UTPS_Addin
         }
 
         /// <summary>
+        /// Convert HH:MM or HH:MM:SS string to total seconds since midnight.
+        /// </summary>
+        private static double TimeToSeconds(string time)
+        {
+            var parts = time.Split(':');
+            int h = int.Parse(parts[0]);
+            int m = int.Parse(parts[1]);
+            int s = parts.Length >= 3 ? int.Parse(parts[2]) : 0;
+            return h * 3600 + m * 60 + s;
+        }
+
+        /// <summary>
         /// Add road network and event points layers to the active map.
         /// After Python outputs a Parquet file, this method chains geoprocessing calls to:
         ///   1. Create a File Geodatabase (if it doesn't exist)
@@ -341,7 +354,7 @@ namespace UTPS_Addin
 
                         eventsAdded = layer != null;
 
-                        // Step E: Auto-enable Time on the layer using timestamp_dt field
+                        // Step E: Auto-enable Time on the layer using timestamp field
                         if (layer != null)
                         {
                             try
@@ -352,21 +365,60 @@ namespace UTPS_Addin
                                     // TimeFields holds the field names; TimeDefinition.UseTime activates the slider
                                     cimLayer.FeatureTable.TimeFields = new CIMTimeTableDefinition
                                     {
-                                        StartTimeField = "timestamp_dt",
-                                        EndTimeField   = "timestamp_dt",  // instant — same field for start and end
+                                        StartTimeField = "timestamp",
+                                        EndTimeField   = "timestamp",  // instant — same field for start and end
                                     };
                                     cimLayer.FeatureTable.TimeDefinition = new CIMTimeDataDefinition
                                     {
                                         UseTime = true,
                                     };
                                     layer.SetDefinition(cimLayer);
-                                    System.Diagnostics.Debug.WriteLine("Time enabled on timestamp_dt field");
+                                    System.Diagnostics.Debug.WriteLine("Time enabled on timestamp field");
                                 }
                             }
                             catch (Exception ex)
                             {
                                 // Non-fatal — time can be enabled manually
                                 System.Diagnostics.Debug.WriteLine($"Could not auto-enable time: {ex.Message}");
+                            }
+
+                            // Step F: Set the MapView current time extent so Time Slider is ready to play
+                            // Start = data start, End = data end, Span = 1/fps seconds (one interpolated frame)
+                            try
+                            {
+                                double spanSeconds = 1.0 / config.Fps;
+
+                                // Parse start/end from config (HH:MM or HH:MM:SS) into DateTime
+                                // Use a fixed base date (2024-01-01) matching the pipeline's timestamp base
+                                var baseDate = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                                DateTime startDt = baseDate + TimeSpan.FromSeconds(TimeToSeconds(config.StartTime));
+                                DateTime endDt   = baseDate + TimeSpan.FromSeconds(TimeToSeconds(config.EndTime));
+
+                                // MapView.Time is set on the UI thread — defer to Dispatcher
+                                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                                {
+                                    try
+                                    {
+                                        var mv = MapView.Active;
+                                        if (mv == null) return;
+
+                                        // Set the overall time extent and the current window (span)
+                                        mv.Time = new TimeRange(
+                                            startDt,
+                                            startDt + TimeSpan.FromSeconds(spanSeconds));
+
+                                        System.Diagnostics.Debug.WriteLine(
+                                            $"MapView time set: {startDt:HH:mm:ss.fff} + {spanSeconds:F3}s span");
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        System.Diagnostics.Debug.WriteLine($"Could not set MapView.Time: {ex.Message}");
+                                    }
+                                });
+                            }
+                            catch (Exception ex)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"Could not set time extent: {ex.Message}");
                             }
                         }
 
