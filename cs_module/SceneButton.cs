@@ -81,12 +81,9 @@ namespace UTPS_Addin
                 }
 
                 // ── 2. Activate (open) the scene view ────────────────────────────────
-                IMapPane pane = null;
-                await QueuedTask.Run(async () =>
-                {
-                    pane = await FrameworkApplication.Panes.CreateMapPaneAsync(sceneMap);
-                    System.Diagnostics.Debug.WriteLine($"Scene pane opened: {pane != null}");
-                });
+                // CreateMapPaneAsync must be called on the UI thread (not inside QueuedTask)
+                IMapPane pane = await FrameworkApplication.Panes.CreateMapPaneAsync(sceneMap, null, MapViewingMode.SceneLocal);
+                System.Diagnostics.Debug.WriteLine($"Scene pane opened: {pane != null}");
 
                 // Give the pane a moment to become active
                 await Task.Delay(500);
