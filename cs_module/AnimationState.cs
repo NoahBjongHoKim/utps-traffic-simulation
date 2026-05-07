@@ -33,12 +33,18 @@ namespace UTPS_Addin
         /// </summary>
         public static string TrafficFeatureClassName { get; set; } = "TrafficEvents";
 
-        // ── Active layer reference (set by SymbolizeButton) ────────────────────
+        // ── Active layer references ────────────────────────────────────────────
         /// <summary>
-        /// The traffic events Feature Layer currently loaded in the active map.
-        /// Set after symbolization so subsequent buttons target the correct layer.
+        /// The traffic events Feature Layer currently loaded in the 2D map.
+        /// Set by TrafficLoaderButton after the data is imported.
         /// </summary>
         public static FeatureLayer TrafficLayer { get; set; }
+
+        /// <summary>
+        /// The traffic events Feature Layer added to the 3D Local Scene by SceneButton.
+        /// Separate instance from TrafficLayer — same GDB data, different map/view.
+        /// </summary>
+        public static FeatureLayer SceneTrafficLayer { get; set; }
 
         // ── Time extent (set by EnableTimeButton) ──────────────────────────────
         /// <summary>Start of the data time range (from layer time extent).</summary>
@@ -71,6 +77,7 @@ namespace UTPS_Addin
             OutputGdbPath = null;
             TrafficFeatureClassName = "TrafficEvents";
             TrafficLayer = null;
+            SceneTrafficLayer = null;
             DataStartTime = default;
             DataEndTime = default;
             AnimationDurationSeconds = 60.0;

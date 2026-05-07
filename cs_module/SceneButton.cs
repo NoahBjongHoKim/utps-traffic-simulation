@@ -2,24 +2,26 @@ using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
 using ArcGIS.Core.CIM;
+using ArcGIS.Core.Time;
 using System;
+using System.IO;
 
 namespace UTPS_Addin
 {
     /// <summary>
-    /// Switch the active map view to a 3D Local Scene and prepare the traffic layer for 3D display.
+    /// Switch the active map view to a 3D Local Scene and add the traffic data as true 3D cubes.
     ///
     /// What this button does:
     ///   1. Switches the current MapView to MapViewingMode.SceneLocal (3D Local Scene).
-    ///      The World Elevation surface activates automatically in Scene views
-    ///      (requires ArcGIS Online sign-in or ArcGIS Pro Advanced license).
-    ///   2. Adds Esri's World Topographic Map basemap as a visual reference layer.
-    ///   3. Symbolizes the traffic points as small white square markers (visible in 3D).
+    ///      The World Elevation surface activates automatically (requires ArcGIS Online sign-in).
+    ///   2. Adds Esri's World Topographic Map as a basemap for visual context.
+    ///   3. Adds the traffic GDB Feature Class directly into the scene map as a new layer.
+    ///   4. Symbolizes the points as white 3D cubes using Simple3DMarkerStyle.Cube.
+    ///   5. Re-enables time on the scene layer (timestamp field).
     ///
-    /// Buildings note: No freely-available global 3D building dataset exists as a ready-made
-    /// ArcGIS service. To add buildings:
-    ///   - Add your own building footprints from the Catalog pane
-    ///   - Or use ArcGIS Pro → Insert → Add Elevation Source / Building Layer for city-specific data
+    /// Buildings: No freely-available global 3D building dataset exists as an ArcGIS service.
+    /// Add your own building footprints via the Catalog pane, or use
+    /// Insert → Add Elevation Source / Building Layer for city-specific data.
     /// </summary>
     internal class SceneButton : Button
     {
@@ -27,6 +29,17 @@ namespace UTPS_Addin
         {
             try
             {
+                // Guard: need traffic data loaded first
+                if (string.IsNullOrEmpty(AnimationState.OutputGdbPath))
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                        "No traffic data found.\n\nPlease run 'Load Traffic Data' first.",
+                        "No Traffic Data",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning);
+                    return;
+                }
+
                 var mapView = MapView.Active;
                 if (mapView == null)
                 {
@@ -80,37 +93,95 @@ namespace UTPS_Addin
                     }
                     catch (Exception ex)
                     {
-                        // Non-fatal — basemap can be added manually
                         System.Diagnostics.Debug.WriteLine($"Could not add basemap: {ex.Message}");
                     }
                 });
 
-                // ── 3. Symbolize points as white squares (visible in 3D) ─────────────
-                var layer = AnimationState.TrafficLayer;
-                if (layer != null)
+                // ── 3. Add the GDB Feature Class into the scene map ──────────────────
+                // The 2D layer is in a different map; we add a fresh layer instance here
+                // pointing at the same Feature Class path.
+                string fcName     = AnimationState.TrafficFeatureClassName ?? "TrafficEvents";
+                string fcFullPath = Path.Combine(AnimationState.OutputGdbPath, fcName);
+
+                FeatureLayer sceneLayer = null;
+                await QueuedTask.Run(() =>
+                {
+                    try
+                    {
+                        var map = MapView.Active?.Map;
+                        if (map == null) return;
+
+                        // Remove any stale copy of the same layer that may already be in the scene
+                        var existing = map.FindLayers(fcName).Count > 0
+                            ? map.FindLayers(fcName)[0]
+                            : null;
+                        if (existing != null)
+                            map.RemoveLayer(existing);
+
+                        sceneLayer = LayerFactory.Instance.CreateLayer(
+                            new Uri(fcFullPath), map, layerName: fcName) as FeatureLayer;
+
+                        System.Diagnostics.Debug.WriteLine($"Scene layer added: {sceneLayer != null}");
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Could not add scene layer: {ex.Message}");
+                    }
+                });
+
+                // ── 4. Symbolize as 3D cubes ─────────────────────────────────────────
+                if (sceneLayer != null)
                 {
                     await QueuedTask.Run(() =>
                     {
                         try
                         {
-                            ApplyWhite3DRenderer(layer);
+                            Apply3DCubeRenderer(sceneLayer);
                         }
                         catch (Exception ex)
                         {
                             System.Diagnostics.Debug.WriteLine($"Could not apply 3D symbol: {ex.Message}");
                         }
                     });
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine("No traffic layer in AnimationState — skipping 3D symbolization");
+
+                    // ── 5. Enable time on the scene layer ────────────────────────────
+                    await QueuedTask.Run(() =>
+                    {
+                        try
+                        {
+                            var cimLayer = sceneLayer.GetDefinition() as CIMFeatureLayer;
+                            if (cimLayer?.FeatureTable != null)
+                            {
+                                cimLayer.FeatureTable.TimeFields = new CIMTimeTableDefinition
+                                {
+                                    StartTimeField = "timestamp",
+                                    EndTimeField   = "timestamp",
+                                };
+                                cimLayer.FeatureTable.TimeDefinition = new CIMTimeDataDefinition
+                                {
+                                    UseTime = true,
+                                };
+                                sceneLayer.SetDefinition(cimLayer);
+                                System.Diagnostics.Debug.WriteLine("Time enabled on scene layer");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Could not enable time on scene layer: {ex.Message}");
+                        }
+                    });
+
+                    // Store the scene layer so SymbolizeButton can also target it
+                    AnimationState.SceneTrafficLayer = sceneLayer;
                 }
 
                 // ── Result message ────────────────────────────────────────────────────
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
-                    "Switched to 3D Local Scene.\n\n" +
+                    "3D Local Scene ready.\n\n" +
                     "• World Topographic Map added as basemap\n" +
-                    (layer != null ? "• Traffic points symbolized as white squares\n" : "") +
+                    (sceneLayer != null
+                        ? $"• Traffic layer '{fcName}' added with white 3D cube symbols\n"
+                        : $"• Could not add traffic layer — check path: {fcFullPath}\n") +
                     "• Terrain surface activates automatically (requires ArcGIS Online sign-in)\n\n" +
                     "To add buildings:\n" +
                     "  • Add your own building footprints via the Catalog pane\n" +
@@ -131,15 +202,17 @@ namespace UTPS_Addin
         }
 
         /// <summary>
-        /// Symbolize points as small white filled squares — clearly visible in 3D scenes.
-        /// The user can customize the symbol further via the Layer Properties pane.
+        /// Symbolize points as white 3D cubes using Simple3DMarkerStyle.Cube.
+        /// Size is in points; adjust via Layer Properties → Symbology afterwards.
         /// </summary>
-        private static void ApplyWhite3DRenderer(FeatureLayer layer)
+        private static void Apply3DCubeRenderer(FeatureLayer layer)
         {
+            // ConstructPointSymbol overload: color, size, Simple3DMarkerStyle
             var sym = SymbolFactory.Instance.ConstructPointSymbol(
-                CIMColor.CreateRGBColor(255, 255, 255), 5, SimpleMarkerStyle.Square);
+                CIMColor.CreateRGBColor(255, 255, 255),
+                10,
+                Simple3DMarkerStyle.Cube);
 
-            // Disable outline for a clean solid-white appearance
             sym.UseRealWorldSymbolSizes = false;
 
             var renderer = new SimpleRendererDefinition
@@ -148,7 +221,7 @@ namespace UTPS_Addin
             };
 
             layer.SetRenderer(layer.CreateRenderer(renderer));
-            System.Diagnostics.Debug.WriteLine("White square renderer applied for 3D scene");
+            System.Diagnostics.Debug.WriteLine("3D cube renderer applied");
         }
     }
 }
