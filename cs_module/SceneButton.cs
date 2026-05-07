@@ -1,3 +1,4 @@
+using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
@@ -47,7 +48,7 @@ namespace UTPS_Addin
                 await QueuedTask.Run(() =>
                 {
                     // Check if a scene with this name already exists in the project
-                    foreach (var mapProjectItem in ArcGIS.Desktop.Core.Project.Current.GetItems<ArcGIS.Desktop.Core.MapProjectItem>())
+                    foreach (var mapProjectItem in ArcGIS.Desktop.Core.Project.Current.GetItems<MapProjectItem>())
                     {
                         var m = mapProjectItem.GetMap();
                         if (m != null && m.Name == SceneName && m.MapType == MapType.Scene)
@@ -60,7 +61,7 @@ namespace UTPS_Addin
                     // Create a new Local Scene if not found
                     if (sceneMap == null)
                     {
-                        sceneMap = MapFactory.Instance.CreateScene(SceneName, MapViewingMode.SceneLocal);
+                        sceneMap = MapFactory.Instance.CreateScene(SceneName, null, MapViewingMode.SceneLocal);
                         System.Diagnostics.Debug.WriteLine($"Created new Local Scene: {SceneName}");
                     }
                     else
@@ -80,10 +81,10 @@ namespace UTPS_Addin
                 }
 
                 // ── 2. Activate (open) the scene view ────────────────────────────────
-                // This must run on the UI thread
-                await ArcGIS.Desktop.Framework.FrameworkApplication.Current.Dispatcher.InvokeAsync(async () =>
+                IMapPane pane = null;
+                await QueuedTask.Run(async () =>
                 {
-                    var pane = await ProApp.Panes.CreateMapPaneAsync(sceneMap);
+                    pane = await FrameworkApplication.Panes.CreateMapPaneAsync(sceneMap);
                     System.Diagnostics.Debug.WriteLine($"Scene pane opened: {pane != null}");
                 });
 
