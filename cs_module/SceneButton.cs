@@ -2,7 +2,6 @@ using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
 using ArcGIS.Core.CIM;
-using ArcGIS.Core.Time;
 using System;
 using System.IO;
 
