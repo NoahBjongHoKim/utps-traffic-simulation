@@ -402,7 +402,7 @@ namespace UTPS_Addin
                                         if (mv == null) return;
 
                                         // Set the overall time extent and the current window (span)
-                                        mv.Time = new ArcGIS.Core.TimeRange(
+                                        mv.Time = new TimeRange(
                                             startDt,
                                             startDt + TimeSpan.FromSeconds(spanSeconds));
 
