@@ -23,6 +23,7 @@ namespace UTPS_Addin
         private string _endTime = "09:00";
         private string _outputPath;
         private double _fps = 5.0;
+        private string _stylxFilePath;
         private string _validationMessage;
         private bool _hasValidationErrors;
 
@@ -30,6 +31,7 @@ namespace UTPS_Addin
         public ICommand BrowseXmlCommand { get; }
         public ICommand BrowseGpkgCommand { get; }
         public ICommand BrowseOutputCommand { get; }
+        public ICommand BrowseStylxCommand { get; }
         public ICommand OkCommand { get; }
 
         public TrafficConfigViewModel(Window parentWindow)
@@ -40,6 +42,7 @@ namespace UTPS_Addin
             BrowseXmlCommand = new RelayCommand(BrowseXmlFile);
             BrowseGpkgCommand = new RelayCommand(BrowseGpkgFile);
             BrowseOutputCommand = new RelayCommand(BrowseOutputFile);
+            BrowseStylxCommand = new RelayCommand(BrowseStylxFile);
             OkCommand = new RelayCommand(OnOk);
 
             // Set default output path
@@ -137,6 +140,20 @@ namespace UTPS_Addin
             }
         }
 
+        public string StylxFilePath
+        {
+            get => _stylxFilePath;
+            set
+            {
+                if (_stylxFilePath != value)
+                {
+                    _stylxFilePath = value;
+                    OnPropertyChanged(nameof(StylxFilePath));
+                    ClearValidation();
+                }
+            }
+        }
+
         public string ValidationMessage
         {
             get => _validationMessage;
@@ -219,6 +236,21 @@ namespace UTPS_Addin
             {
                 // Remove extension - Python script will add it
                 OutputPath = Path.ChangeExtension(dialog.FileName, null);
+            }
+        }
+
+        private void BrowseStylxFile()
+        {
+            var dialog = new OpenFileDialog
+            {
+                Title = "Select Style File (optional)",
+                Filter = "Style Files (*.stylx)|*.stylx|All Files (*.*)|*.*",
+                CheckFileExists = true
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                StylxFilePath = dialog.FileName;
             }
         }
 

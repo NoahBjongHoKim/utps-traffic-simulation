@@ -182,6 +182,28 @@
                                Foreground="#888"/>
                 </Grid>
 
+                <!-- Style File (optional) -->
+                <TextBlock Text="Style File (optional)" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             Text="{Binding StylxFilePath, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource FieldTextBox}"
+                             ToolTip="Optional .stylx file with point symbols named 1-15, used to color points by relative speed. Leave blank to use the default red-to-green color ramp."/>
+                    <Button Grid.Column="1"
+                            Content="Browse..."
+                            Style="{StaticResource BrowseButton}"
+                            Command="{Binding BrowseStylxCommand}"/>
+                </Grid>
+                <TextBlock FontSize="10" Foreground="#888" Margin="0,4,0,0">
+                    Optional. If provided, points are colored using symbols "1"-"15" from this style
+                    file based on relative speed. If left blank, the default red-to-green color
+                    ramp is used.
+                </TextBlock>
+
                 <!-- Validation Messages -->
                 <Border Background="#FFF3CD"
                         BorderBrush="#FFC107"
