@@ -696,6 +696,7 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
                 .astype('datetime64[ms, UTC]')  # force ms precision for ArcGIS
             )
             df_out['speed_level'] = df_out['speed_level'].astype('int8')
+            df_out['style_id'] = df_out['style_id'].astype('int8')
             df_out.to_parquet(path, index=False)
             logger.success(f"Parquet created: {path}")
 
@@ -704,6 +705,7 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
             df_out = pd.DataFrame([{k: v for k, v in r.items() if k != '_feature'} for r in rows])
             df_out['timestamp_dt'] = pd.to_datetime(df_out['timestamp_dt']).dt.tz_localize('UTC')
             df_out['speed_level'] = df_out['speed_level'].astype('int8')
+            df_out['style_id'] = df_out['style_id'].astype('int8')
             geometry = [Point(r['x'], r['y']) for r in rows]
             gdf_out = gpd.GeoDataFrame(df_out.drop(columns=['x', 'y']), geometry=geometry, crs='EPSG:4326')
             gdf_out.to_parquet(path)
