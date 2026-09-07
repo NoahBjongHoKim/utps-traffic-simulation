@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 namespace UTPS_Addin
 {
     /// <summary>
-    /// Open (or reuse) a Local Scene in the project and add the traffic data as true 3D cubes.
+    /// Open (or reuse) a Local Scene in the project and add the traffic data as points.
     ///
     /// What this button does:
     ///   1. Looks for an existing Local Scene named "Traffic 3D Scene" in the project.
@@ -19,8 +19,9 @@ namespace UTPS_Addin
     ///   2. Opens/activates that scene's map view.
     ///   3. Adds Esri's World Topographic Map as a basemap for visual context.
     ///   4. Adds the traffic GDB Feature Class into the scene map as a new layer.
-    ///   5. Symbolizes the points as white 3D cubes using Simple3DMarkerStyle.Cube.
-    ///   6. Enables time on the scene layer (timestamp field).
+    ///   5. Clones the renderer from the 2D traffic layer, so points keep the same
+    ///      colors/symbols (speed color ramp or stylx-based) as in the 2D map.
+    ///   6. Enables time on the scene layer (timestamp_dt field).
     ///
     /// Note: ArcGIS Pro does not support converting a 2D map view to 3D in-place via the SDK.
     /// This button creates a dedicated Local Scene instead.
@@ -136,15 +137,28 @@ namespace UTPS_Addin
                     }
                 });
 
-                // ── 5 & 6. Symbolize + enable time ───────────────────────────────────
+                // ── 5 & 6. Symbolize (clone 2D renderer) + enable time ────────────────
                 if (sceneLayer != null)
                 {
                     await QueuedTask.Run(() =>
                     {
-                        try { Apply3DCubeRenderer(sceneLayer); }
+                        try
+                        {
+                            var sourceLayer = AnimationState.TrafficLayer;
+                            if (sourceLayer != null)
+                            {
+                                var rendererDef = sourceLayer.GetRenderer();
+                                sceneLayer.SetRenderer(rendererDef);
+                                System.Diagnostics.Debug.WriteLine("Cloned 2D renderer onto scene layer");
+                            }
+                            else
+                            {
+                                System.Diagnostics.Debug.WriteLine("No 2D traffic layer found to clone renderer from");
+                            }
+                        }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"Could not apply 3D symbol: {ex.Message}");
+                            System.Diagnostics.Debug.WriteLine($"Could not clone renderer onto scene layer: {ex.Message}");
                         }
                     });
 
@@ -182,7 +196,7 @@ namespace UTPS_Addin
                     $"3D Local Scene '{SceneName}' is ready.\n\n" +
                     "• World Topographic Map added as basemap\n" +
                     (sceneLayer != null
-                        ? $"• Traffic layer '{fcName}' added with white 3D cube symbols\n"
+                        ? $"• Traffic layer '{fcName}' added, matching the 2D map's colors/symbols\n"
                         : $"• Could not add traffic layer — check path: {fcFullPath}\n") +
                     "• Terrain surface activates automatically (requires ArcGIS Online sign-in)\n\n" +
                     "To add buildings:\n" +
@@ -201,27 +215,6 @@ namespace UTPS_Addin
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Error);
             }
-        }
-
-        /// <summary>
-        /// Symbolize points as white 3D cubes using Simple3DMarkerStyle.Cube.
-        /// </summary>
-        private static void Apply3DCubeRenderer(FeatureLayer layer)
-        {
-            var sym = SymbolFactory.Instance.ConstructPointSymbol(
-                CIMColor.CreateRGBColor(255, 255, 255),
-                10,
-                Simple3DMarkerStyle.Cube);
-
-            sym.UseRealWorldSymbolSizes = false;
-
-            var renderer = new SimpleRendererDefinition
-            {
-                SymbolTemplate = sym.MakeSymbolReference()
-            };
-
-            layer.SetRenderer(layer.CreateRenderer(renderer));
-            System.Diagnostics.Debug.WriteLine("3D cube renderer applied");
         }
     }
 }
