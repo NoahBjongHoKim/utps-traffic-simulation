@@ -174,7 +174,7 @@ class ProcessingConfig(BaseModel):
         description="Output formats: geojson, csv, parquet, geoparquet"
     )
     snapshot_mode: bool = Field(False, description="Output only 1 point per vehicle at snapshot time")
-    interpolation_fps: int = Field(1, ge=1, le=60, description="Frames per second for sub-second interpolation (e.g. 10 = 0.1s steps). Higher values produce smoother ArcGIS Time Slider animation.")
+    interpolation_fps: float = Field(1.0, ge=0.1, le=60, description="Frames per second for sub-second interpolation (e.g. 10 = 0.1s steps, 0.2 = 5s steps). Higher values produce smoother ArcGIS Time Slider animation; lower values are useful for condensing long simulations into short videos.")
     num_output_chunks: int = Field(1, ge=1, description="Split output into N time-based files for ArcGIS performance. Each chunk becomes a separate Feature Class.")
     heatmap_enabled: bool = Field(False, description="Enable heatmap export with vehicle counts")
     heatmap_time_interval: int = Field(300, ge=60, description="Time interval for heatmap sampling (seconds)")
