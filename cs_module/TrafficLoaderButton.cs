@@ -195,9 +195,10 @@ namespace UTPS_Addin
                 System.Diagnostics.Debug.WriteLine("[BboxFilter READ] null — no spatial filter will be applied");
             }
 
-            // Always forward FPS to Python wrapper
+            // Always forward FPS to Python wrapper (invariant culture to avoid
+            // locale-specific decimal separators, e.g. "0,2" instead of "0.2")
             if (args.Length > 0) args.Append(' ');
-            args.Append($"--fps {config.Fps}");
+            args.Append(FormattableString.Invariant($"--fps {config.Fps}"));
             System.Diagnostics.Debug.WriteLine($"[FPS] {config.Fps}");
 
             return args.ToString();
