@@ -288,3 +288,4 @@ _ReSharper*/
 *.esriAddinX
 *.esriAddIn
 cs_module/Install/
+.worktrees/
