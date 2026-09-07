@@ -173,9 +173,9 @@
                     <TextBox Grid.Column="0"
                              Text="{Binding Fps, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource FieldTextBox}"
-                             ToolTip="Frames per second for trajectory interpolation (e.g. 5 = one point every 0.2 s)"/>
+                             ToolTip="Frames per second for trajectory interpolation (e.g. 5 = one point every 0.2 s, 0.2 = one point every 5 s)"/>
                     <TextBlock Grid.Column="1"
-                               Text="frames per second (1–30)"
+                               Text="frames per second (0.1–60)"
                                VerticalAlignment="Center"
                                Margin="8,0,0,0"
                                FontSize="10"

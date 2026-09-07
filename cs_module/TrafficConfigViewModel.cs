@@ -22,7 +22,7 @@ namespace UTPS_Addin
         private string _startTime = "08:00";
         private string _endTime = "09:00";
         private string _outputPath;
-        private int _fps = 5;
+        private double _fps = 5.0;
         private string _validationMessage;
         private bool _hasValidationErrors;
 
@@ -123,7 +123,7 @@ namespace UTPS_Addin
             }
         }
 
-        public int Fps
+        public double Fps
         {
             get => _fps;
             set
@@ -280,9 +280,9 @@ namespace UTPS_Addin
             }
 
             // Validate FPS
-            if (Fps < 1 || Fps > 30)
+            if (Fps < 0.1 || Fps > 60)
             {
-                errors.AppendLine("• Interpolation FPS must be between 1 and 30");
+                errors.AppendLine("• Interpolation FPS must be between 0.1 and 60");
             }
 
             // Validate output path
