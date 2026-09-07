@@ -427,6 +427,18 @@ namespace UTPS_Addin
                         AnimationState.TrafficFeatureClassName = fcName;
                         AnimationState.TrafficLayer = layer;
 
+                        // Apply symbology: stylx-based if a style file was provided, otherwise
+                        // the default red-to-green speed color ramp. Previously this required a
+                        // separate manual "Toggle Speed Color" step — now it's automatic on import.
+                        if (!string.IsNullOrWhiteSpace(config.StylxFilePath) && File.Exists(config.StylxFilePath))
+                        {
+                            await RendererHelper.ApplyStylxRendererAsync(layer, config.StylxFilePath);
+                        }
+                        else
+                        {
+                            RendererHelper.ApplySpeedColorRenderer(layer);
+                        }
+
                         System.Diagnostics.Debug.WriteLine($"Feature Class layer added: {eventsAdded}");
                     }
                     catch (Exception ex)
