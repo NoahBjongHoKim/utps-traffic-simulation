@@ -432,7 +432,7 @@ namespace UTPS_Addin
                         // separate manual "Toggle Speed Color" step — now it's automatic on import.
                         if (!string.IsNullOrWhiteSpace(config.StylxFilePath) && File.Exists(config.StylxFilePath))
                         {
-                            await RendererHelper.ApplyStylxRendererAsync(layer, config.StylxFilePath);
+                            RendererHelper.ApplyStylxRenderer(layer, config.StylxFilePath);
                         }
                         else
                         {
