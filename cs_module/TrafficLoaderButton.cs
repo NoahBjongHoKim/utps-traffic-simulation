@@ -364,8 +364,8 @@ namespace UTPS_Addin
                                     // TimeFields holds the field names; TimeDefinition.UseTime activates the slider
                                     cimLayer.FeatureTable.TimeFields = new CIMTimeTableDefinition
                                     {
-                                        StartTimeField = "timestamp",
-                                        EndTimeField   = "timestamp",  // instant — same field for start and end
+                                        StartTimeField = "timestamp_dt",
+                                        EndTimeField   = "timestamp_dt",  // instant — same field for start and end
                                     };
                                     cimLayer.FeatureTable.TimeDefinition = new CIMTimeDataDefinition
                                     {

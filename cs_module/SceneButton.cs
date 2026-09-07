@@ -157,8 +157,8 @@ namespace UTPS_Addin
                             {
                                 cimLayer.FeatureTable.TimeFields = new CIMTimeTableDefinition
                                 {
-                                    StartTimeField = "timestamp",
-                                    EndTimeField   = "timestamp",
+                                    StartTimeField = "timestamp_dt",
+                                    EndTimeField   = "timestamp_dt",
                                 };
                                 cimLayer.FeatureTable.TimeDefinition = new CIMTimeDataDefinition
                                 {
