@@ -108,6 +108,34 @@ def time_to_timestamp(seconds):
     return (base + timedelta(seconds=float(seconds))).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]  # millisecond precision
 
 
+def compute_style_id(s):
+    """Map relative speed (s = travelling_speed / freespeed) to a linear 1-15 bin.
+
+    Unlike compute_speed_level (which uses non-linear thresholds tuned for the
+    built-in red-green color ramp), this divides [0, 1.0] into 15 equal-width
+    bins for matching against externally-authored .stylx point symbols named
+    "1" through "15". Values above 1.0 (faster than freespeed) clamp to bin 15.
+
+    Args:
+        s: Relative speed ratio (travelling_speed / freespeed). None or <= 0 -> bin 1.
+
+    Returns:
+        Integer style bin 1-15.
+
+    Example:
+        >>> compute_style_id(0.0)
+        1
+        >>> compute_style_id(0.5)
+        8
+        >>> compute_style_id(1.3)
+        15
+    """
+    if s is None or s <= 0.0:
+        return 1
+    bin_width = 1.0 / 15
+    return min(15, max(1, math.ceil(s / bin_width)))
+
+
 def compute_speed_level(s):
     """Map relative speed (s = travelling_speed / freespeed) to a discrete 0–15 level.
 
@@ -348,6 +376,7 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
     # Pre-compute fields shared across all code paths
     s_rounded = round(relative_velocity, 3) if relative_velocity is not None else None
     speed_lvl = compute_speed_level(relative_velocity)
+    style_id = compute_style_id(relative_velocity)
 
     # Snapshot mode: return single point at start position, but keep correct speed
     if snapshot_mode:
@@ -367,6 +396,7 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
                 "freespeed": round(freespeed, 3) if freespeed is not None else None,
                 "s": s_rounded,
                 "speed_level": speed_lvl,
+                "style_id": style_id,
             }
         }
         return [feature]
@@ -389,6 +419,7 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
                 "freespeed": round(freespeed, 3) if freespeed is not None else None,
                 "s": s_rounded,
                 "speed_level": speed_lvl,
+                "style_id": style_id,
             }
         }
         return [feature]
@@ -418,6 +449,7 @@ def interpolate_trajectory(link_id, time_enter, time_leave,
                 "freespeed": round(freespeed, 3) if freespeed is not None else None,
                 "s": s_rounded,
                 "speed_level": speed_lvl,
+                "style_id": style_id,
             }
         }
         features.append(feature)
@@ -596,6 +628,7 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
                     'freespeed': props['freespeed'],
                     's': props['s'],
                     'speed_level': props['speed_level'],
+                    'style_id': props['style_id'],
                     '_feature': feature,  # keep original for GeoJSON writes
                 })
 
@@ -641,11 +674,13 @@ def parquet_to_export(parquet_input, link_attrs, output_base,
             with open(path, 'w', newline='') as f:
                 writer = csv_module.writer(f)
                 writer.writerow(['x', 'y', 'timestamp', 'timestamp_dt', 'angle', 'person_id',
-                                  'interval_id', 'travelling_speed', 'freespeed', 's', 'speed_level'])
+                                  'interval_id', 'travelling_speed', 'freespeed', 's', 'speed_level',
+                                  'style_id'])
                 for r in rows:
                     writer.writerow([r['x'], r['y'], r['timestamp'], r['timestamp_dt'], r['angle'],
                                      r['person_id'], r['interval_id'],
-                                     r['travelling_speed'], r['freespeed'], r['s'], r['speed_level']])
+                                     r['travelling_speed'], r['freespeed'], r['s'], r['speed_level'],
+                                     r['style_id']])
             logger.success(f"CSV created: {path}")
 
         if 'parquet' in output_formats:
