@@ -31,7 +31,6 @@
         <group id="UTPS_Anim_Group" caption="Animation Workflow" appearsOnAddInTab="true">
           <button refID="UTPS_Anim_SetStudyArea_Button" size="large"/>
           <button refID="UTPS_Addin_TrafficLoader_Button" size="large"/>
-          <button refID="UTPS_Anim_Symbolize_Button" size="large"/>
           <button refID="UTPS_Anim_Scene_Button" size="large"/>
         </group>
       </groups>
@@ -65,21 +64,8 @@
           </tooltip>
         </button>
 
-        <!-- Toggle Speed Color button -->
-        <button id="UTPS_Anim_Symbolize_Button" caption="3. Toggle Speed Color"
-                className="SymbolizeButton" loadOnClick="true"
-                smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonOrange16.png"
-                largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonOrange32.png">
-          <tooltip heading="Toggle Speed-Based Coloring">
-            Toggle between speed-based color coding and plain white symbols.
-            When active: red (slow) → green (fast) graduated color by speed_level field.
-            Click again to revert to simple white points.
-            <disabledText />
-          </tooltip>
-        </button>
-
         <!-- Switch to 3D Scene button -->
-        <button id="UTPS_Anim_Scene_Button" caption="4. Switch to 3D"
+        <button id="UTPS_Anim_Scene_Button" caption="3. Switch to 3D"
                 className="SceneButton" loadOnClick="true"
                 smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen16.png"
                 largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen32.png">
