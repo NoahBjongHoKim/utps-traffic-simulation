@@ -198,7 +198,7 @@
                             Style="{StaticResource BrowseButton}"
                             Command="{Binding BrowseStylxCommand}"/>
                 </Grid>
-                <TextBlock FontSize="10" Foreground="#888" Margin="0,4,0,0">
+                <TextBlock FontSize="10" Foreground="#888" Margin="0,4,0,0" TextWrapping="Wrap">
                     Optional. If provided, points are colored using symbols "1"-"15" from this style
                     file based on relative speed. If left blank, the default red-to-green color
                     ramp is used.
