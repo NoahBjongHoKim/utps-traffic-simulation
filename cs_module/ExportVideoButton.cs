@@ -19,10 +19,26 @@ namespace UTPS_Addin
     {
         private const string AnimationName = "TrafficAnimation";
 
+        // Guards against overlapping exports triggered via this button (e.g. a rapid
+        // double-click before the first export's dialog has appeared). Does not and
+        // cannot guard against a concurrent export started through ArcGIS Pro's own
+        // built-in Export Movie UI — that is out of scope for this add-in's code.
+        private static bool _exportInProgress = false;
+
         protected override async void OnClick()
         {
             try
             {
+                if (_exportInProgress)
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                        "A video export is already in progress. Please wait for it to finish.",
+                        "Export In Progress",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning);
+                    return;
+                }
+
                 // Guard: Load & Animate must have run first this session
                 if (AnimationState.VideoLengthSeconds <= 0 || AnimationState.ExportFps <= 0)
                 {
@@ -71,7 +87,15 @@ namespace UTPS_Addin
                 var viewModel = dialog.DataContext as ExportVideoViewModel;
                 if (viewModel == null) return;
 
-                await RunExportAsync(mapView, viewModel);
+                _exportInProgress = true;
+                try
+                {
+                    await RunExportAsync(mapView, viewModel);
+                }
+                finally
+                {
+                    _exportInProgress = false;
+                }
             }
             catch (Exception ex)
             {
