@@ -12,17 +12,17 @@ namespace UTPS_Addin
     /// </summary>
     public static class AnimationState
     {
-        // ── Study area (set by DrawBboxButton) ────────────────────────────────
+        // ── Study area (set by LoadAndAnimateButton) ────────────────────────────
         /// <summary>
         /// Bounding box of the study area in the map's spatial reference.
         /// Null = no spatial filter (process all links).
-        /// Set by "Set Study Area" button from the current map view extent.
+        /// Set from the current map view extent at the start of "Load & Animate".
         /// </summary>
         public static Envelope BboxFilter { get; set; }
 
-        // ── Output paths (set by TrafficLoaderButton after processing) ─────────
+        // ── Output paths (set by LoadAndAnimateButton after processing) ────────
         /// <summary>
-        /// Full path to the File Geodatabase created during "Load Traffic Data".
+        /// Full path to the File Geodatabase created during "Load & Animate".
         /// Example: C:\Users\Noah\Documents\UTPS\output\traffic_output.gdb
         /// </summary>
         public static string OutputGdbPath { get; set; }
@@ -36,13 +36,14 @@ namespace UTPS_Addin
         // ── Active layer references ────────────────────────────────────────────
         /// <summary>
         /// The traffic events Feature Layer currently loaded in the 2D map.
-        /// Set by TrafficLoaderButton after the data is imported.
+        /// Set by LoadAndAnimateButton after the data is imported.
         /// </summary>
         public static FeatureLayer TrafficLayer { get; set; }
 
         /// <summary>
-        /// The traffic events Feature Layer added to the 3D Local Scene by SceneButton.
-        /// Separate instance from TrafficLayer — same GDB data, different map/view.
+        /// The traffic events Feature Layer added to the 3D Local Scene by
+        /// LoadAndAnimateButton. Separate instance from TrafficLayer — same GDB
+        /// data, different map/view.
         /// </summary>
         public static FeatureLayer SceneTrafficLayer { get; set; }
 
