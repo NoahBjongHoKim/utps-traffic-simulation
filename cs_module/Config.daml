@@ -27,54 +27,37 @@
       </tabs>
               
       <groups>
-        <!-- Animation Workflow group — sequential steps for loading and animating traffic data -->
+        <!-- Animation Workflow group — load &amp; animate traffic data, then export video -->
         <group id="UTPS_Anim_Group" caption="Animation Workflow" appearsOnAddInTab="true">
-          <button refID="UTPS_Anim_SetStudyArea_Button" size="large"/>
-          <button refID="UTPS_Addin_TrafficLoader_Button" size="large"/>
-          <button refID="UTPS_Anim_Scene_Button" size="large"/>
+          <button refID="UTPS_Anim_LoadAndAnimate_Button" size="large"/>
+          <button refID="UTPS_Anim_ExportVideo_Button" size="large"/>
         </group>
       </groups>
 
       <controls>
-        <!-- Set Study Area button -->
-        <button id="UTPS_Anim_SetStudyArea_Button" caption="1. Set Study Area"
-                className="DrawBboxButton" loadOnClick="true"
-                smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen16.png"
-                largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen32.png">
-          <tooltip heading="Set Study Area">
-            Captures the current map view extent as the spatial filter for data loading.
-            Zoom and pan the map to your area of interest, then click this button.
-            Only road links within this area will be processed — dramatically reducing
-            processing time for large simulation datasets.
-            <disabledText />
-          </tooltip>
-        </button>
-
-        <!-- Load Traffic Data button -->
-        <button id="UTPS_Addin_TrafficLoader_Button" caption="2. Load Traffic Data"
-                className="TrafficLoaderButton" loadOnClick="true"
+        <!-- Load &amp; Animate button (fused: study area + load data + 3D scene) -->
+        <button id="UTPS_Anim_LoadAndAnimate_Button" caption="1. Load &amp; Animate"
+                className="LoadAndAnimateButton" loadOnClick="true"
                 smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue16.png"
                 largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue32.png">
-          <tooltip heading="Import Traffic Simulation">
-            Load traffic simulation data from XML events file.
-            Configure time range, FPS, and output settings.
-            If a study area was set, only events within that area are processed.
-            Output is written to a File Geodatabase with time automatically enabled.
+          <tooltip heading="Load &amp; Animate Traffic Simulation">
+            Captures the current map view as the study area, loads traffic simulation
+            data from an XML events file, applies speed-based symbology, enables the
+            Time Slider, and sets up a 3D Local Scene — all in one click.
+            Zoom/pan the map to your area of interest first, then click this button.
             <disabledText />
           </tooltip>
         </button>
 
-        <!-- Switch to 3D Scene button -->
-        <button id="UTPS_Anim_Scene_Button" caption="3. Switch to 3D"
-                className="SceneButton" loadOnClick="true"
+        <!-- Export Video button -->
+        <button id="UTPS_Anim_ExportVideo_Button" caption="2. Export Video"
+                className="ExportVideoButton" loadOnClick="true"
                 smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen16.png"
                 largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen32.png">
-          <tooltip heading="Switch to 3D Local Scene">
-            Switches the active map view to a 3D Local Scene.
-            Adds a topographic basemap for visual context.
-            Symbolizes traffic points as white 3D boxes.
-            Terrain surface activates automatically (requires ArcGIS Online sign-in).
-            For buildings: add your own layer via Catalog pane.
+          <tooltip heading="Export Animation Video">
+            Exports the current map/scene view's Time Slider animation to an MP4 video.
+            Choose an output path, resolution, and the start/end seconds of the video
+            to export. Requires 'Load &amp; Animate' to have run first this session.
             <disabledText />
           </tooltip>
         </button>
