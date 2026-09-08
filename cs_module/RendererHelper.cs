@@ -80,12 +80,23 @@ namespace UTPS_Addin
                     return reason;
                 }
 
+                // Enumerate every point symbol in the style and match on its display
+                // Name (not LookupItem's internal Key, which ArcGIS Pro often sets to a
+                // mangled composite like "1_Shapes_1" rather than the plain visible name
+                // "1" — using LookupItem/SearchSymbols(name) here previously caused every
+                // lookup to fail even when the symbols were named correctly in the file).
+                var allPointSymbols = styleItem.SearchSymbols(StyleItemType.PointSymbol, string.Empty);
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"Style '{styleFileName}': {allPointSymbols.Count()} point symbol(s) found. " +
+                    $"Names: {string.Join(", ", allPointSymbols.Select(s => $"'{s.Name}' (Key='{s.Key}')"))}");
+
                 var classes = new List<CIMUniqueValueClass>();
                 for (int i = 1; i <= 15; i++)
                 {
                     string name = i.ToString();
-                    var symbolItem = styleItem.LookupItem(StyleItemType.PointSymbol, name) as SymbolStyleItem
-                                     ?? styleItem.SearchSymbols(StyleItemType.PointSymbol, name).FirstOrDefault();
+                    var symbolItem = allPointSymbols
+                        .FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.Ordinal));
 
                     if (symbolItem?.Symbol is CIMPointSymbol pointSymbol)
                     {
