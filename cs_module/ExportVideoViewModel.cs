@@ -172,6 +172,14 @@ namespace UTPS_Addin
         {
             var errors = new System.Text.StringBuilder();
 
+            // Defensive check: ExportVideoButton is expected to guard against this before
+            // even constructing this dialog, but validate independently too, so this dialog
+            // never gives a confusing "0s" error with no explanation if reused elsewhere.
+            if (AnimationState.VideoLengthSeconds <= 0)
+            {
+                errors.AppendLine("• Video length is unknown — please run 'Load & Animate' first");
+            }
+
             if (string.IsNullOrWhiteSpace(OutputFilePath))
             {
                 errors.AppendLine("• Output file path is required");
