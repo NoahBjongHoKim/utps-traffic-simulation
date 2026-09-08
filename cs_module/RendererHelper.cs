@@ -136,7 +136,7 @@ namespace UTPS_Addin
             }
             catch (Exception ex)
             {
-                string reason = $"Error loading style file: {ex.Message}";
+                string reason = $"Error loading style file '{stylxPath}': {ex.Message}";
                 System.Diagnostics.Debug.WriteLine($"Error applying stylx renderer from '{stylxPath}': {ex.Message}. Falling back to speed color renderer.");
                 ApplySpeedColorRenderer(layer);
                 return reason;
