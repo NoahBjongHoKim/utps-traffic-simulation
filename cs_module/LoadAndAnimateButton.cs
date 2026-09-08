@@ -456,14 +456,19 @@ namespace UTPS_Addin
                 // ── 3D Scene setup (merged from the old SceneButton) ─────────────────
                 bool sceneReady = false;
                 FeatureLayer sceneLayer = null;
+                List<string> removedSceneLayerNames = new List<string>();
                 if (eventsAdded)
                 {
-                    (sceneReady, sceneLayer) = await SetUpSceneAsync(fcName, fcFullPath);
+                    (sceneReady, sceneLayer, removedSceneLayerNames) = await SetUpSceneAsync(fcName, fcFullPath);
                 }
 
                 // ── Result message ────────────────────────────────────────────────
                 string stylxNote = stylxFallbackReason != null
                     ? $"\n\n⚠ Style file could not be applied: {stylxFallbackReason}\n   Using default color ramp instead."
+                    : "";
+
+                string removedLayersNote = removedSceneLayerNames != null && removedSceneLayerNames.Count > 0
+                    ? $"\n\nNote: removed {removedSceneLayerNames.Count} layer(s) from the 3D scene that weren't added by this tool: {string.Join(", ", removedSceneLayerNames)}"
                     : "";
 
                 if (eventsAdded)
@@ -477,7 +482,8 @@ namespace UTPS_Addin
                         $"\nGDB: {gdbPath}\n" +
                         $"Feature Class: {fcName}\n" +
                         $"Time range: {config.StartTime} – {config.EndTime}" +
-                        stylxNote,
+                        stylxNote +
+                        removedLayersNote,
                         "Success",
                         System.Windows.MessageBoxButton.OK,
                         System.Windows.MessageBoxImage.Information);
@@ -529,7 +535,7 @@ namespace UTPS_Addin
         /// enable time. Merged from the old SceneButton.OnClick. Returns true if the
         /// scene layer was successfully added.
         /// </summary>
-        private async Task<(bool Success, FeatureLayer Layer)> SetUpSceneAsync(string fcName, string fcFullPath)
+        private async Task<(bool Success, FeatureLayer Layer, List<string> RemovedLayerNames)> SetUpSceneAsync(string fcName, string fcFullPath)
         {
             FeatureLayer sceneLayer = null;
             try
@@ -560,7 +566,7 @@ namespace UTPS_Addin
 
                 if (sceneMap == null)
                 {
-                    return (false, null);
+                    return (false, null, new List<string>());
                 }
 
                 IMapPane pane = await ProApp.Panes.CreateMapPaneAsync(sceneMap);
@@ -736,7 +742,10 @@ namespace UTPS_Addin
                 // than guessing at specific names to remove, keep only the layers this
                 // method itself tracked adding (basemap, 3D buildings, traffic feature
                 // class) and remove everything else, so the scene is deterministically
-                // clean regardless of what else might have been present.
+                // clean regardless of what else might have been present. Removed layer
+                // names are surfaced to the user in the final result dialog (not just
+                // Debug.WriteLine) since this can delete content a user added by hand.
+                var removedLayerNames = new List<string>();
                 await QueuedTask.Run(() =>
                 {
                     try
@@ -752,6 +761,7 @@ namespace UTPS_Addin
                             if (!keepLayers.Contains(layer))
                             {
                                 System.Diagnostics.Debug.WriteLine($"Removing extra scene layer: {layer.Name}");
+                                removedLayerNames.Add(layer.Name);
                                 sceneMap.RemoveLayer(layer);
                             }
                         }
@@ -800,12 +810,12 @@ namespace UTPS_Addin
                     }
                 }
 
-                return (sceneLayer != null, sceneLayer);
+                return (sceneLayer != null, sceneLayer, removedLayerNames);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"SetUpSceneAsync error: {ex}");
-                return (false, null);
+                return (false, null, new List<string>());
             }
         }
     }
