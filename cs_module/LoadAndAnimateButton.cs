@@ -108,7 +108,7 @@ namespace UTPS_Addin
                         System.Diagnostics.Debug.WriteLine($"End Time: {viewModel.EndTime}");
                         System.Diagnostics.Debug.WriteLine($"GPKG File: {viewModel.GpkgFilePath}");
                         System.Diagnostics.Debug.WriteLine($"Output Path: {viewModel.OutputPath}");
-                        System.Diagnostics.Debug.WriteLine($"Video Length: {viewModel.VideoLengthSeconds}s, Export FPS: {viewModel.ExportFps}");
+                        System.Diagnostics.Debug.WriteLine($"Speed Multiplier: {viewModel.SpeedMultiplier}x, Export FPS: {viewModel.ExportFps}");
 
                         StartProcessing(viewModel);
                     }
@@ -142,9 +142,6 @@ namespace UTPS_Addin
                 AnimationState.Reset();
 
                 double computedFps = config.ComputedInterpolationFps;
-                AnimationState.VideoLengthSeconds = config.VideoLengthSeconds;
-                AnimationState.ExportFps = config.ExportFps;
-                AnimationState.InterpolationIntervalSeconds = 1.0 / computedFps;
 
                 var runner = new PythonRunner();
                 string extraArgs = BuildExtraArgs(config, computedFps);
