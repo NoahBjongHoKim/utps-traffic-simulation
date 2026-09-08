@@ -44,15 +44,23 @@ namespace UTPS_Addin
         /// </summary>
         /// <param name="layer">The feature layer to symbolize.</param>
         /// <param name="stylxPath">Full path to the .stylx file.</param>
+        /// <returns>
+        /// <c>null</c> if the stylx-based unique values renderer was applied successfully.
+        /// Otherwise, a human-readable reason the fallback speed-color renderer was used
+        /// instead — one of: style file not registered/found, no matching named symbols,
+        /// or an exception message. Callers should surface this to the user rather than
+        /// silently showing a plain success message when a stylx path was provided but
+        /// the fallback fired.
+        /// </returns>
         /// <remarks>
         /// Must be called from within an existing <c>QueuedTask.Run</c> context (same
         /// requirement as <see cref="ApplySpeedColorRenderer"/>, which directly calls
         /// <c>layer.SetRenderer</c>/<c>layer.CreateRenderer</c> — CIM-thread-affine
         /// operations). This method does not schedule its own worker-thread callback;
-        /// its only caller (<c>TrafficLoaderButton.AddLayersToMap</c>) already runs on
-        /// the CIM worker thread inside its own <c>QueuedTask.Run</c>.
+        /// its callers already run on the CIM worker thread inside their own
+        /// <c>QueuedTask.Run</c>.
         /// </remarks>
-        public static void ApplyStylxRenderer(FeatureLayer layer, string stylxPath)
+        public static string ApplyStylxRenderer(FeatureLayer layer, string stylxPath)
         {
             try
             {
@@ -66,9 +74,10 @@ namespace UTPS_Addin
 
                 if (styleItem == null)
                 {
+                    string reason = "Style file not found in project after registration";
                     System.Diagnostics.Debug.WriteLine($"Could not find registered style project item for: {stylxPath}");
                     ApplySpeedColorRenderer(layer);
-                    return;
+                    return reason;
                 }
 
                 var classes = new List<CIMUniqueValueClass>();
@@ -100,9 +109,10 @@ namespace UTPS_Addin
 
                 if (classes.Count == 0)
                 {
+                    string reason = "No symbols named 1-15 found in style file";
                     System.Diagnostics.Debug.WriteLine("No matching symbols found in stylx file — falling back to speed color renderer");
                     ApplySpeedColorRenderer(layer);
-                    return;
+                    return reason;
                 }
 
                 var fallbackSymbol = SymbolFactory.Instance.ConstructPointSymbol(
@@ -122,11 +132,14 @@ namespace UTPS_Addin
 
                 layer.SetRenderer(renderer);
                 System.Diagnostics.Debug.WriteLine($"Stylx renderer applied: {classes.Count} symbols matched from {styleFileName}");
+                return null;
             }
             catch (Exception ex)
             {
+                string reason = $"Error loading style file: {ex.Message}";
                 System.Diagnostics.Debug.WriteLine($"Error applying stylx renderer from '{stylxPath}': {ex.Message}. Falling back to speed color renderer.");
                 ApplySpeedColorRenderer(layer);
+                return reason;
             }
         }
     }
