@@ -1,0 +1,154 @@
+<Window x:Class="UTPS_Addin.ExportVideoDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:UTPS_Addin"
+        Title="Export Video"
+        Height="420"
+        Width="550"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F0F0F0">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,8,0,4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+
+        <Style x:Key="FieldTextBox" TargetType="TextBox">
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="BrowseButton" TargetType="Button">
+            <Setter Property="Width" Value="80"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,10">
+            Export the current view's Time Slider animation to an MP4 video.
+        </TextBlock>
+
+        <StackPanel Grid.Row="1">
+
+            <TextBlock Text="Output File Path *" Style="{StaticResource FieldLabel}"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Text="{Binding OutputFilePath, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource FieldTextBox}"
+                         ToolTip="Where to save the exported MP4 video"/>
+                <Button Grid.Column="1"
+                        Content="Browse..."
+                        Style="{StaticResource BrowseButton}"
+                        Command="{Binding BrowseOutputCommand}"/>
+            </Grid>
+
+            <TextBlock Text="Resolution" Style="{StaticResource FieldLabel}"/>
+            <ComboBox SelectedValue="{Binding Resolution}"
+                      SelectedValuePath="Tag"
+                      Height="28"
+                      VerticalContentAlignment="Center">
+                <ComboBoxItem Content="720p (1280x720)" Tag="{x:Static local:VideoResolution.Res720p}"/>
+                <ComboBoxItem Content="1080p (1920x1080)" Tag="{x:Static local:VideoResolution.Res1080p}" IsSelected="True"/>
+                <ComboBoxItem Content="4K (3840x2160)" Tag="{x:Static local:VideoResolution.Res4K}"/>
+            </ComboBox>
+
+            <TextBlock Text="Export Range (seconds)" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="20"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Start Second" FontSize="11" Margin="0,0,0,4"/>
+                    <TextBox Text="{Binding StartSecond, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource FieldTextBox}"
+                             ToolTip="Video second to start exporting from (minimum 0)"/>
+                </StackPanel>
+
+                <TextBlock Grid.Column="1" Text="—"
+                           VerticalAlignment="Bottom"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,8"
+                           FontSize="16"/>
+
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="End Second" FontSize="11" Margin="0,0,0,4"/>
+                    <TextBox Text="{Binding EndSecond, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource FieldTextBox}"
+                             ToolTip="Video second to stop exporting at (maximum = video length from Load &amp; Animate)"/>
+                </StackPanel>
+            </Grid>
+
+            <TextBlock FontSize="10" Foreground="#888" Margin="0,4,0,0" TextWrapping="Wrap">
+                Export range refers to seconds within the exported VIDEO's own timeline
+                (0 to the video length chosen in Load &amp; Animate), not the simulated data's
+                time range.
+            </TextBlock>
+
+            <!-- Validation Messages -->
+            <Border Background="#FFF3CD"
+                    BorderBrush="#FFC107"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="10"
+                    Margin="0,15,0,0"
+                    Visibility="{Binding HasValidationErrors, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="⚠ Please correct the following:" FontWeight="Bold" Foreground="#856404"/>
+                    <TextBlock Text="{Binding ValidationMessage}"
+                               TextWrapping="Wrap"
+                               Margin="0,5,0,0"
+                               Foreground="#856404"/>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+
+        <Grid Grid.Row="2" Margin="0,15,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0"
+                       Text="* Required fields"
+                       VerticalAlignment="Center"
+                       FontSize="10"
+                       Foreground="#666"/>
+
+            <Button Grid.Column="1"
+                    Content="Export"
+                    Width="90"
+                    Height="32"
+                    Margin="0,0,10,0"
+                    IsDefault="True"
+                    Command="{Binding OkCommand}"/>
+
+            <Button Grid.Column="2"
+                    Content="Cancel"
+                    Width="90"
+                    Height="32"
+                    IsCancel="True"/>
+        </Grid>
+    </Grid>
+</Window>
