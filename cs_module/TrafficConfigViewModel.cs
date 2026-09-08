@@ -22,7 +22,7 @@ namespace UTPS_Addin
         private string _startTime = "08:00";
         private string _endTime = "09:00";
         private string _outputPath;
-        private double _videoLengthSeconds = 60.0;
+        private int _speedMultiplier = 4;
         private double _exportFps = 24.0;
         private string _stylxFilePath;
         private string _validationMessage;
@@ -95,6 +95,7 @@ namespace UTPS_Addin
                     _startTime = value;
                     OnPropertyChanged(nameof(StartTime));
                     OnPropertyChanged(nameof(ComputedIntervalText));
+                    OnPropertyChanged(nameof(ComputedVideoLengthSeconds));
                     ClearValidation();
                 }
             }
@@ -110,6 +111,7 @@ namespace UTPS_Addin
                     _endTime = value;
                     OnPropertyChanged(nameof(EndTime));
                     OnPropertyChanged(nameof(ComputedIntervalText));
+                    OnPropertyChanged(nameof(ComputedVideoLengthSeconds));
                     ClearValidation();
                 }
             }
@@ -129,18 +131,43 @@ namespace UTPS_Addin
             }
         }
 
-        public double VideoLengthSeconds
+        public int SpeedMultiplier
         {
-            get => _videoLengthSeconds;
+            get => _speedMultiplier;
             set
             {
-                if (_videoLengthSeconds != value)
+                if (_speedMultiplier != value)
                 {
-                    _videoLengthSeconds = value;
-                    OnPropertyChanged(nameof(VideoLengthSeconds));
+                    _speedMultiplier = value;
+                    OnPropertyChanged(nameof(SpeedMultiplier));
                     OnPropertyChanged(nameof(ComputedIntervalText));
+                    OnPropertyChanged(nameof(ComputedVideoLengthSeconds));
                     ClearValidation();
                 }
+            }
+        }
+
+        /// <summary>
+        /// Live-computed video length in seconds: the simulated time range
+        /// (EndTime - StartTime) divided by SpeedMultiplier. Read-only, derived —
+        /// not persisted, not settable directly.
+        /// </summary>
+        public double ComputedVideoLengthSeconds
+        {
+            get
+            {
+                if (!IsValidTimeFormat(StartTime) || !IsValidTimeFormat(EndTime) || SpeedMultiplier <= 0)
+                {
+                    return 0;
+                }
+
+                double totalSimSeconds = TimeToSeconds(EndTime) - TimeToSeconds(StartTime);
+                if (totalSimSeconds <= 0)
+                {
+                    return 0;
+                }
+
+                return totalSimSeconds / SpeedMultiplier;
             }
         }
 
@@ -160,36 +187,27 @@ namespace UTPS_Addin
         }
 
         /// <summary>
-        /// Computed interpolation fps, derived from VideoLengthSeconds, ExportFps, and the
-        /// simulated time range (EndTime - StartTime), clamped to the pipeline's supported
-        /// 0.1-60 fps range. Read by OnOk() / the caller after a successful dialog close.
+        /// Computed interpolation fps = ExportFps / SpeedMultiplier, clamped to the
+        /// pipeline's supported 0.1-60 fps range. Read by the caller after a successful
+        /// dialog close.
         /// </summary>
         public double ComputedInterpolationFps
         {
             get
             {
-                double totalSimSeconds = 0;
-                if (IsValidTimeFormat(StartTime) && IsValidTimeFormat(EndTime))
-                {
-                    totalSimSeconds = TimeToSeconds(EndTime) - TimeToSeconds(StartTime);
-                }
-
-                if (totalSimSeconds <= 0 || VideoLengthSeconds <= 0 || ExportFps <= 0)
+                if (SpeedMultiplier <= 0 || ExportFps <= 0)
                 {
                     return 1.0; // sane default while inputs are incomplete/invalid
                 }
 
-                double totalFrames = VideoLengthSeconds * ExportFps;
-                double rawIntervalSeconds = totalSimSeconds / totalFrames;
-                double rawFps = 1.0 / rawIntervalSeconds;
-
+                double rawFps = ExportFps / SpeedMultiplier;
                 return Math.Min(60.0, Math.Max(0.1, rawFps));
             }
         }
 
         /// <summary>
-        /// Live-updating text shown in the dialog describing the computed interpolation
-        /// interval, including a note if the raw computed value was clamped.
+        /// Live-updating text shown in the dialog describing the computed video length
+        /// and interpolation interval, including a note if the raw fps was clamped.
         /// </summary>
         public string ComputedIntervalText
         {
@@ -201,24 +219,26 @@ namespace UTPS_Addin
                     totalSimSeconds = TimeToSeconds(EndTime) - TimeToSeconds(StartTime);
                 }
 
-                if (totalSimSeconds <= 0 || VideoLengthSeconds <= 0 || ExportFps <= 0)
+                if (totalSimSeconds <= 0 || SpeedMultiplier <= 0 || ExportFps <= 0)
                 {
-                    return "Computed: enter a valid time range, video length, and export fps above.";
+                    return "Computed: enter a valid time range, speed multiplier, and export fps above.";
                 }
 
-                double totalFrames = VideoLengthSeconds * ExportFps;
-                double rawIntervalSeconds = totalSimSeconds / totalFrames;
-                double rawFps = 1.0 / rawIntervalSeconds;
+                double videoLengthSeconds = totalSimSeconds / SpeedMultiplier;
+                double rawFps = ExportFps / SpeedMultiplier;
                 double clampedFps = Math.Min(60.0, Math.Max(0.1, rawFps));
                 double clampedIntervalSeconds = 1.0 / clampedFps;
 
+                string videoLengthText = $"Computed video length: {videoLengthSeconds:F1}s";
+
                 if (Math.Abs(clampedFps - rawFps) < 0.0001)
                 {
-                    return $"Computed: 1 point every {clampedIntervalSeconds:F2}s";
+                    return $"{videoLengthText}\n1 point every {clampedIntervalSeconds:F2}s";
                 }
 
                 string reason = rawFps > 60.0 ? "60 fps interpolation limit" : "0.1 fps interpolation limit";
-                return $"Requested 1 point every {rawIntervalSeconds:F2}s, clamped to {clampedIntervalSeconds:F2}s ({reason})";
+                return $"{videoLengthText}\nRequested 1 point every {(1.0 / rawFps):F2}s, " +
+                       $"clamped to {clampedIntervalSeconds:F2}s ({reason})";
             }
         }
 
@@ -393,11 +413,11 @@ namespace UTPS_Addin
                 }
             }
 
-            // Validate video length and export fps (the computed interpolation fps is
+            // Validate speed multiplier and export fps (the computed interpolation fps is
             // always clamped to a valid range internally, so no need to validate that)
-            if (VideoLengthSeconds <= 0)
+            if (SpeedMultiplier < 1)
             {
-                errors.AppendLine("• Video Length must be greater than 0 seconds");
+                errors.AppendLine("• Speed Multiplier must be a whole number of 1 or greater");
             }
 
             if (ExportFps <= 0)

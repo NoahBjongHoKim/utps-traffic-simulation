@@ -108,7 +108,7 @@ namespace UTPS_Addin
                         System.Diagnostics.Debug.WriteLine($"End Time: {viewModel.EndTime}");
                         System.Diagnostics.Debug.WriteLine($"GPKG File: {viewModel.GpkgFilePath}");
                         System.Diagnostics.Debug.WriteLine($"Output Path: {viewModel.OutputPath}");
-                        System.Diagnostics.Debug.WriteLine($"Video Length: {viewModel.VideoLengthSeconds}s, Export FPS: {viewModel.ExportFps}");
+                        System.Diagnostics.Debug.WriteLine($"Speed Multiplier: {viewModel.SpeedMultiplier}x, Export FPS: {viewModel.ExportFps}");
 
                         StartProcessing(viewModel);
                     }
@@ -142,9 +142,6 @@ namespace UTPS_Addin
                 AnimationState.Reset();
 
                 double computedFps = config.ComputedInterpolationFps;
-                AnimationState.VideoLengthSeconds = config.VideoLengthSeconds;
-                AnimationState.ExportFps = config.ExportFps;
-                AnimationState.InterpolationIntervalSeconds = 1.0 / computedFps;
 
                 var runner = new PythonRunner();
                 string extraArgs = BuildExtraArgs(config, computedFps);
@@ -568,6 +565,8 @@ namespace UTPS_Addin
                 IMapPane pane = await ProApp.Panes.CreateMapPaneAsync(sceneMap);
                 System.Diagnostics.Debug.WriteLine($"Scene pane opened: {pane != null}");
 
+                MapView scenePane = pane?.MapView;
+
                 await Task.Delay(500);
 
                 // ── Dark basemap (Human Geography Dark Base layer only) ──────────────
@@ -686,6 +685,44 @@ namespace UTPS_Addin
                     });
 
                     AnimationState.SceneTrafficLayer = sceneLayer;
+                }
+
+                // ── Auto-zoom to the study area at a 45° oblique angle ────────────────
+                // Deliberately NOT wrapped in QueuedTask.Run: ZoomToAsync is documented
+                // by Esri as safe (and intended) to call directly from the calling thread,
+                // unlike the CIM-mutation calls above (SetRenderer/SetDefinition/etc.)
+                // which require QueuedTask.Run. This codebase has previously had a bug
+                // from nesting QueuedTask.Run unnecessarily — do not reintroduce it here.
+                if (scenePane != null && AnimationState.BboxFilter != null)
+                {
+                    try
+                    {
+                        // AnimationState.BboxFilter is already an Envelope in WGS84 (set
+                        // in OnClick via GeometryEngine.Instance.Project), so it can be
+                        // passed to ZoomToAsync directly with no reconstruction needed.
+                        await scenePane.ZoomToAsync(AnimationState.BboxFilter, TimeSpan.FromSeconds(1));
+
+                        // The camera read here reflects the post-zoom state: ZoomToAsync's
+                        // returned Task only completes once the zoom is applied, and only
+                        // Pitch/Heading (unconditionally overwritten below, never read back)
+                        // are what this code actually relies on — the position/distance
+                        // fields carried through from this read are exactly what the prior
+                        // await settled, so there's no staleness risk in practice.
+                        var camera = scenePane.Camera;
+                        camera.Pitch = -45;
+                        camera.Heading = 0;
+                        await scenePane.ZoomToAsync(camera, TimeSpan.Zero);
+
+                        System.Diagnostics.Debug.WriteLine("Scene camera auto-zoomed to study area at 45° pitch");
+                    }
+                    catch (Exception ex)
+                    {
+                        // Non-fatal by design: a failed auto-zoom leaves the scene at
+                        // ArcGIS's default camera rather than the study area — worth
+                        // confirming visually during manual testing, but not worth
+                        // failing the whole "Load & Animate" flow over.
+                        System.Diagnostics.Debug.WriteLine($"Could not auto-zoom scene camera: {ex.Message}");
+                    }
                 }
 
                 return (sceneLayer != null, sceneLayer);
