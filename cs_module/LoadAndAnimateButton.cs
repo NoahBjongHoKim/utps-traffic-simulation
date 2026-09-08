@@ -565,6 +565,8 @@ namespace UTPS_Addin
                 IMapPane pane = await ProApp.Panes.CreateMapPaneAsync(sceneMap);
                 System.Diagnostics.Debug.WriteLine($"Scene pane opened: {pane != null}");
 
+                MapView scenePane = pane?.MapView;
+
                 await Task.Delay(500);
 
                 // ── Dark basemap (Human Geography Dark Base layer only) ──────────────
@@ -683,6 +685,31 @@ namespace UTPS_Addin
                     });
 
                     AnimationState.SceneTrafficLayer = sceneLayer;
+                }
+
+                // ── Auto-zoom to the study area at a 45° oblique angle ────────────────
+                if (scenePane != null && AnimationState.BboxFilter != null)
+                {
+                    try
+                    {
+                        var wgs84 = ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326);
+                        var bb = AnimationState.BboxFilter;
+                        var envelope = ArcGIS.Core.Geometry.EnvelopeBuilderEx.CreateEnvelope(
+                            bb.XMin, bb.YMin, bb.XMax, bb.YMax, wgs84);
+
+                        await scenePane.ZoomToAsync(envelope, TimeSpan.FromSeconds(1));
+
+                        var camera = scenePane.Camera;
+                        camera.Pitch = -45;
+                        camera.Heading = 0;
+                        await scenePane.ZoomToAsync(camera, TimeSpan.Zero);
+
+                        System.Diagnostics.Debug.WriteLine("Scene camera auto-zoomed to study area at 45° pitch");
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Could not auto-zoom scene camera: {ex.Message}");
+                    }
                 }
 
                 return (sceneLayer != null, sceneLayer);
