@@ -1,7 +1,6 @@
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
-using ArcGIS.Desktop.Mapping.Animations;
 using ArcGIS.Desktop.Mapping.Events;
 using System;
 using System.Linq;
