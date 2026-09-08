@@ -688,17 +688,26 @@ namespace UTPS_Addin
                 }
 
                 // ── Auto-zoom to the study area at a 45° oblique angle ────────────────
+                // Deliberately NOT wrapped in QueuedTask.Run: ZoomToAsync is documented
+                // by Esri as safe (and intended) to call directly from the calling thread,
+                // unlike the CIM-mutation calls above (SetRenderer/SetDefinition/etc.)
+                // which require QueuedTask.Run. This codebase has previously had a bug
+                // from nesting QueuedTask.Run unnecessarily — do not reintroduce it here.
                 if (scenePane != null && AnimationState.BboxFilter != null)
                 {
                     try
                     {
-                        var wgs84 = ArcGIS.Core.Geometry.SpatialReferenceBuilder.CreateSpatialReference(4326);
-                        var bb = AnimationState.BboxFilter;
-                        var envelope = ArcGIS.Core.Geometry.EnvelopeBuilderEx.CreateEnvelope(
-                            bb.XMin, bb.YMin, bb.XMax, bb.YMax, wgs84);
+                        // AnimationState.BboxFilter is already an Envelope in WGS84 (set
+                        // in OnClick via GeometryEngine.Instance.Project), so it can be
+                        // passed to ZoomToAsync directly with no reconstruction needed.
+                        await scenePane.ZoomToAsync(AnimationState.BboxFilter, TimeSpan.FromSeconds(1));
 
-                        await scenePane.ZoomToAsync(envelope, TimeSpan.FromSeconds(1));
-
+                        // The camera read here reflects the post-zoom state: ZoomToAsync's
+                        // returned Task only completes once the zoom is applied, and only
+                        // Pitch/Heading (unconditionally overwritten below, never read back)
+                        // are what this code actually relies on — the position/distance
+                        // fields carried through from this read are exactly what the prior
+                        // await settled, so there's no staleness risk in practice.
                         var camera = scenePane.Camera;
                         camera.Pitch = -45;
                         camera.Heading = 0;
@@ -708,6 +717,10 @@ namespace UTPS_Addin
                     }
                     catch (Exception ex)
                     {
+                        // Non-fatal by design: a failed auto-zoom leaves the scene at
+                        // ArcGIS's default camera rather than the study area — worth
+                        // confirming visually during manual testing, but not worth
+                        // failing the whole "Load & Animate" flow over.
                         System.Diagnostics.Debug.WriteLine($"Could not auto-zoom scene camera: {ex.Message}");
                     }
                 }
