@@ -54,29 +54,9 @@ namespace UTPS_Addin
         /// <summary>End of the data time range (from layer time extent).</summary>
         public static DateTime DataEndTime { get; set; }
 
-        // ── Animation settings (set by LoadAndAnimateButton, read by ExportVideoButton) ──
+        // ── Animation settings ──────────────────────────────────────────────────
         /// <summary>Target duration of the exported animation in seconds. Default: 60.</summary>
         public static double AnimationDurationSeconds { get; set; } = 60.0;
-
-        /// <summary>
-        /// Video length (seconds) chosen in the Load &amp; Animate dialog. 0 = unset
-        /// (Load &amp; Animate has not run this session). Read by ExportVideoButton to
-        /// bound the allowed export start/end second range.
-        /// </summary>
-        public static double VideoLengthSeconds { get; set; } = 0.0;
-
-        /// <summary>
-        /// Export frame rate (frames per second) chosen in the Load &amp; Animate dialog.
-        /// Reused directly by ExportVideoButton — not asked for again at export time.
-        /// </summary>
-        public static double ExportFps { get; set; } = 0.0;
-
-        /// <summary>
-        /// Computed interpolation interval in seconds (= 1.0 / computed interpolation fps),
-        /// used both for the Time Slider span at import time and for aligning the exported
-        /// animation's time-step span so no frame ever falls in a gap between data points.
-        /// </summary>
-        public static double InterpolationIntervalSeconds { get; set; } = 0.0;
 
         // ── Split layers (set by SplitLayerButton) ─────────────────────────────
         /// <summary>
@@ -103,9 +83,6 @@ namespace UTPS_Addin
             DataEndTime = default;
             AnimationDurationSeconds = 60.0;
             SplitLayers = new List<FeatureLayer>();
-            VideoLengthSeconds = 0.0;
-            ExportFps = 0.0;
-            InterpolationIntervalSeconds = 0.0;
         }
     }
 }
