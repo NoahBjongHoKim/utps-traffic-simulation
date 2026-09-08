@@ -106,8 +106,16 @@ namespace UTPS_Addin
                     timeTrack.RemoveKeyframe(kf);
                 }
 
-                var startExtent = new TimeExtent(mapView.Time.Start);
-                var endExtent = new TimeExtent(mapView.Time.End);
+                // Capture the ORIGINAL full data time range before anything below
+                // mutates mapView.Time. Without this, a second export in the same
+                // session would read the collapsed span from the previous export's
+                // mutation instead of the real data range, silently producing a
+                // video frozen near the first frame.
+                DateTime originalStart = mapView.Time.Start;
+                DateTime originalEnd = mapView.Time.End;
+
+                var startExtent = new TimeExtent(originalStart);
+                var endExtent = new TimeExtent(originalEnd);
 
                 timeTrack.CreateKeyframe(startExtent, TimeSpan.Zero, AnimationTransition.Linear);
                 timeTrack.CreateKeyframe(
@@ -122,12 +130,12 @@ namespace UTPS_Addin
                 double spanSeconds = AnimationState.InterpolationIntervalSeconds;
                 if (spanSeconds > 0)
                 {
-                    mapView.Time = new TimeRange(mapView.Time.Start, mapView.Time.Start + TimeSpan.FromSeconds(spanSeconds));
+                    mapView.Time = new TimeRange(originalStart, originalStart + TimeSpan.FromSeconds(spanSeconds));
                 }
 
                 System.Diagnostics.Debug.WriteLine(
-                    $"Animation keyframes built: {mapView.Time.Start:HH:mm:ss} -> " +
-                    $"{mapView.Time.End:HH:mm:ss} over {AnimationState.VideoLengthSeconds}s video, " +
+                    $"Animation keyframes built: {originalStart:HH:mm:ss} -> " +
+                    $"{originalEnd:HH:mm:ss} over {AnimationState.VideoLengthSeconds}s video, " +
                     $"span={spanSeconds:F3}s");
             });
 
