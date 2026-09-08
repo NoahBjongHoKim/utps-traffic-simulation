@@ -9,8 +9,8 @@ namespace UTPS_Addin
 {
     /// <summary>
     /// Shared symbology helpers for the traffic events layer.
-    /// Used by both TrafficLoaderButton (2D layer, at import time) and
-    /// SceneButton (3D scene layer, cloning the 2D renderer).
+    /// Used by LoadAndAnimateButton, both for the 2D layer at import time and
+    /// (via renderer cloning) the 3D scene layer.
     /// </summary>
     internal static class RendererHelper
     {
