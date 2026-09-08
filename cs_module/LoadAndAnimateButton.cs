@@ -8,6 +8,7 @@ using ArcGIS.Core.CIM;
 using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Core.Geoprocessing;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -569,41 +570,83 @@ namespace UTPS_Addin
 
                 await Task.Delay(500);
 
-                // ── Dark basemap (Human Geography Dark Base layer only) ──────────────
+                // ── Dark basemap: real "Human Geography Dark Map" portal item, with a
+                // plain topographic fallback if the portal item can't be loaded (e.g. not
+                // signed in to ArcGIS Online, or the item is otherwise unavailable). The
+                // previous version of this code loaded World_Basemap_v2/VectorTileServer,
+                // which is generic (non-dark) tile DATA with no style applied — the actual
+                // dark styling only exists on this specific portal item, not a plain URL.
+                Layer basemapLayer = null;
                 await QueuedTask.Run(() =>
                 {
                     try
                     {
-                        if (sceneMap.FindLayers("Human Geography Dark Base").Count == 0)
+                        if (sceneMap.FindLayers("Human Geography Dark Map").Count > 0)
                         {
-                            var basemapUri = new Uri(
-                                "https://basemaps.arcgis.com/arcgis/rest/services/World_Basemap_v2/VectorTileServer");
-                            LayerFactory.Instance.CreateLayer(basemapUri, sceneMap, layerName: "Human Geography Dark Base");
-                            System.Diagnostics.Debug.WriteLine("Human Geography Dark basemap added");
+                            basemapLayer = sceneMap.FindLayers("Human Geography Dark Map").First();
+                            return;
+                        }
+
+                        const string humanGeographyDarkItemId = "4f2e99ba65e34bb8af49733d9778fb8e";
+                        var item = ItemFactory.Instance.Create(humanGeographyDarkItemId, ItemFactory.ItemType.PortalItem);
+
+                        if (item != null && LayerFactory.Instance.CanCreateLayerFrom(item))
+                        {
+                            var layerParams = new LayerCreationParams(item) { Name = "Human Geography Dark Map" };
+                            basemapLayer = LayerFactory.Instance.CreateLayer<Layer>(layerParams, sceneMap);
+                            System.Diagnostics.Debug.WriteLine("Human Geography Dark Map basemap added");
+                        }
+                        else
+                        {
+                            throw new Exception("Human Geography Dark Map portal item unavailable");
                         }
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"Could not add basemap (may require ArcGIS Online sign-in): {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine(
+                            $"Could not add Human Geography Dark Map (may require ArcGIS Online sign-in): {ex.Message}. Falling back to World Topographic Map.");
+
+                        try
+                        {
+                            if (sceneMap.FindLayers("World Topographic Map").Count > 0)
+                            {
+                                basemapLayer = sceneMap.FindLayers("World Topographic Map").First();
+                                return;
+                            }
+
+                            var topoUri = new Uri(
+                                "https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer");
+                            basemapLayer = LayerFactory.Instance.CreateLayer(topoUri, sceneMap, layerName: "World Topographic Map");
+                            System.Diagnostics.Debug.WriteLine("World Topographic Map basemap added (fallback)");
+                        }
+                        catch (Exception fallbackEx)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Fallback basemap also failed: {fallbackEx.Message}");
+                        }
                     }
                 });
+
+                Layer buildingsLayer = null;
 
                 // ── Esri 3D Buildings at 50% transparency ─────────────────────────────
                 await QueuedTask.Run(() =>
                 {
                     try
                     {
-                        if (sceneMap.FindLayers("Esri 3D Buildings").Count == 0)
+                        if (sceneMap.FindLayers("Esri 3D Buildings").Count > 0)
                         {
-                            var buildingsUri = new Uri(
-                                "https://basemaps3d.arcgis.com/arcgis/rest/services/Esri3D_Buildings_v1/SceneServer");
-                            var buildingsLayer = LayerFactory.Instance.CreateLayer(
-                                buildingsUri, sceneMap, layerName: "Esri 3D Buildings") as Layer;
-                            if (buildingsLayer != null)
-                            {
-                                buildingsLayer.SetTransparency(50);
-                                System.Diagnostics.Debug.WriteLine("Esri 3D Buildings added at 50% transparency");
-                            }
+                            buildingsLayer = sceneMap.FindLayers("Esri 3D Buildings").First();
+                            return;
+                        }
+
+                        var buildingsUri = new Uri(
+                            "https://basemaps3d.arcgis.com/arcgis/rest/services/Esri3D_Buildings_v1/SceneServer");
+                        buildingsLayer = LayerFactory.Instance.CreateLayer(
+                            buildingsUri, sceneMap, layerName: "Esri 3D Buildings") as Layer;
+                        if (buildingsLayer != null)
+                        {
+                            buildingsLayer.SetTransparency(50);
+                            System.Diagnostics.Debug.WriteLine("Esri 3D Buildings added at 50% transparency");
                         }
                     }
                     catch (Exception ex)
@@ -686,6 +729,38 @@ namespace UTPS_Addin
 
                     AnimationState.SceneTrafficLayer = sceneLayer;
                 }
+
+                // ── Remove any other layers in the scene that this add-in didn't add ──
+                // A new Local Scene (or an existing one being reused) may already contain
+                // other content depending on ArcGIS Online org/profile settings — rather
+                // than guessing at specific names to remove, keep only the layers this
+                // method itself tracked adding (basemap, 3D buildings, traffic feature
+                // class) and remove everything else, so the scene is deterministically
+                // clean regardless of what else might have been present.
+                await QueuedTask.Run(() =>
+                {
+                    try
+                    {
+                        var keepLayers = new HashSet<Layer>();
+                        if (basemapLayer != null) keepLayers.Add(basemapLayer);
+                        if (buildingsLayer != null) keepLayers.Add(buildingsLayer);
+                        if (sceneLayer != null) keepLayers.Add(sceneLayer);
+
+                        var allLayers = sceneMap.GetLayersAsFlattenedList().ToList();
+                        foreach (var layer in allLayers)
+                        {
+                            if (!keepLayers.Contains(layer))
+                            {
+                                System.Diagnostics.Debug.WriteLine($"Removing extra scene layer: {layer.Name}");
+                                sceneMap.RemoveLayer(layer);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Could not clean up extra scene layers: {ex.Message}");
+                    }
+                });
 
                 // ── Auto-zoom to the study area at a 45° oblique angle ────────────────
                 // Deliberately NOT wrapped in QueuedTask.Run: ZoomToAsync is documented
