@@ -27,10 +27,10 @@
       </tabs>
               
       <groups>
-        <!-- Animation Workflow group — load &amp; animate traffic data, then export video -->
+        <!-- Animation Workflow group — load &amp; animate traffic data, then build an animation -->
         <group id="UTPS_Anim_Group" caption="Animation Workflow" appearsOnAddInTab="true">
           <button refID="UTPS_Anim_LoadAndAnimate_Button" size="large"/>
-          <button refID="UTPS_Anim_ExportVideo_Button" size="large"/>
+          <button refID="esri_mapping_enableAnimationButton" size="large"/>
         </group>
       </groups>
 
@@ -45,19 +45,6 @@
             data from an XML events file, applies speed-based symbology, enables the
             Time Slider, and sets up a 3D Local Scene — all in one click.
             Zoom/pan the map to your area of interest first, then click this button.
-            <disabledText />
-          </tooltip>
-        </button>
-
-        <!-- Export Video button -->
-        <button id="UTPS_Anim_ExportVideo_Button" caption="2. Export Video"
-                className="ExportVideoButton" loadOnClick="true"
-                smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen16.png"
-                largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen32.png">
-          <tooltip heading="Export Animation Video">
-            Exports the current map/scene view's Time Slider animation to an MP4 video.
-            Choose an output path, resolution, and the start/end seconds of the video
-            to export. Requires 'Load &amp; Animate' to have run first this session.
             <disabledText />
           </tooltip>
         </button>
