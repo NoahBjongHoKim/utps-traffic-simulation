@@ -1,20 +1,49 @@
 using ArcGIS.Desktop.Framework.Contracts;
+using System;
+
+namespace UTPS_Addin
+{
+    /// <summary>
+    /// Export the current view's Time Slider animation to an MP4 video.
+    ///
+    /// TEMPORARILY DISABLED: the real implementation below (wrapped in
+    /// #if EXPORT_VIDEO_ENABLED / #endif) uses ArcGIS Pro SDK Animation/TimeTrack/
+    /// BeginExport APIs that are still being debugged against a real ArcGIS Pro
+    /// build. Define EXPORT_VIDEO_ENABLED (or just delete this stub OnClick and the
+    /// #if/#endif wrapper) once that's sorted out to restore the real behavior.
+    /// This stub keeps the ribbon button present and functional (so the rest of the
+    /// project builds and the Load &amp; Animate button can be tested) without
+    /// touching any of the not-yet-verified Animation SDK types.
+    /// </summary>
+    internal class ExportVideoButton : Button
+    {
+        protected override void OnClick()
+        {
+            ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                "Video export is temporarily disabled while the ArcGIS Animation SDK " +
+                "integration is being debugged. Use 'Load & Animate' in the meantime.",
+                "Not Yet Available",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Information);
+        }
+    }
+}
+
+#if EXPORT_VIDEO_ENABLED
+// ─────────────────────────────────────────────────────────────────────────────
+// Real implementation, disabled until the Animation SDK build issues are
+// resolved. To restore: delete the stub class above, remove this #if block's
+// guard (or define EXPORT_VIDEO_ENABLED in the .csproj), and rebuild.
+// ─────────────────────────────────────────────────────────────────────────────
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
 using ArcGIS.Desktop.Mapping.Events;
-using System;
 using System.Linq;
 using System.Threading.Tasks;
 
 namespace UTPS_Addin
 {
-    /// <summary>
-    /// Export the current view's Time Slider animation to an MP4 video, using the
-    /// ArcGIS Pro SDK's Animation/TimeTrack/BeginExport API. Requires "Load &amp;
-    /// Animate" to have run first this session (reads AnimationState.VideoLengthSeconds
-    /// and AnimationState.ExportFps, both unset/0 until that button has run).
-    /// </summary>
-    internal class ExportVideoButton : Button
+    internal class ExportVideoButtonReal : Button
     {
         private const string AnimationName = "TrafficAnimation";
 
@@ -226,3 +255,4 @@ namespace UTPS_Addin
         }
     }
 }
+#endif
