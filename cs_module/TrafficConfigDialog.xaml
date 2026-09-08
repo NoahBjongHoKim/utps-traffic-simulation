@@ -163,8 +163,8 @@
                     Output will be saved as GeoParquet format for efficient storage and analysis.
                 </TextBlock>
 
-                <!-- Video Length + Export FPS -->
-                <TextBlock Text="Target Video" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
+                <!-- Speed Multiplier + Export FPS -->
+                <TextBlock Text="Animation Speed" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -173,10 +173,10 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="Video Length (seconds)" FontSize="11" Margin="0,0,0,4"/>
-                        <TextBox Text="{Binding VideoLengthSeconds, UpdateSourceTrigger=PropertyChanged}"
+                        <TextBlock Text="Speed Multiplier (×N faster than real-time)" FontSize="11" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding SpeedMultiplier, UpdateSourceTrigger=PropertyChanged}"
                                  Style="{StaticResource FieldTextBox}"
-                                 ToolTip="How long the exported video should be, in seconds (e.g. 60)"/>
+                                 ToolTip="How many times faster than real-time the animation should play (whole number, e.g. 4)"/>
                     </StackPanel>
 
                     <TextBlock Grid.Column="1" Text="×"
