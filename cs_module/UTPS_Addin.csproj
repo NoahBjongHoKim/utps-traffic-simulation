@@ -22,6 +22,18 @@
     <Content Include="scripts\**\*.*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Bundle python_module (the pipeline package) into the build output so the
+         add-in is self-contained once packaged as .esriAddinX and installed on
+         another machine - it no longer depends on a specific repo folder layout
+         relative to the installed add-in's location. -->
+    <Content Include="..\python_module\**\*.py">
+      <Link>python_module\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\pyproject.toml">
+      <Link>pyproject.toml</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <None Include="Properties\launchSettings.json" />

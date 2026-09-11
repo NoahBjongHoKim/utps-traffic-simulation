@@ -101,9 +101,17 @@ def run_pipeline(args):
     try:
         print_progress("INIT", 0, "Importing pipeline modules...")
 
-        # Add parent directory to path to import traffic_sim_module
-        repo_root = Path(__file__).parent.parent.parent
-        sys.path.insert(0, str(repo_root))
+        # Prefer a python_module folder bundled right next to this script (this is
+        # how the add-in ships once packaged as .esriAddinX and installed on another
+        # machine - see the Content Include in UTPS_Addin.csproj). Fall back to the
+        # dev-repo layout (repo_root/python_module, three levels above this script)
+        # for local development, where python_module isn't copied into scripts/.
+        bundled_module_dir = Path(__file__).parent / "python_module"
+        if bundled_module_dir.is_dir():
+            sys.path.insert(0, str(Path(__file__).parent))
+        else:
+            repo_root = Path(__file__).parent.parent.parent
+            sys.path.insert(0, str(repo_root))
 
         from python_module.pipeline.xml_to_parquet import (
             xml_to_parquet_filtered,
